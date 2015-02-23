@@ -1,0 +1,51 @@
+Process
+
+We have three levels in the heirarchy:
+	-RAM (25 vAddrs)
+	-SSD (100 vAddrs)
+	-HDD (1000 vAddrs)
+
+
+we have a page table, which contains information about each page on the system.
+The page table contains 1000 page entries
+
+
+-------------------------
+Dealing with page faults
+-------------------------
+
+	1. Determine the location of the data in secondary storage.
+	2. Obtain an empty page frame in RAM to use as a container for the data.
+	3. Load the requested data into the available page frame.
+	4. Update the page table to refer to the new page frame.
+	5. Return control to the program, transparently retrying the instruction that caused the page fault.
+
+
+If we run allocate 25 times, it will immedietly add 25 entries to the RAM array and make 25 entries in the page table
+
+If we allocate more than 25 times, but less than 125 times, the system will swap old values in RAM to the SSD and bring new items into RAM
+
+if we allocate more than 125 times but less than 1000 times without freeing, then the system will swap old values in RAM into the SSD and then old values in the SSD into the HDD
+
+if we allocate more than 1000 times without freeing, the system will freak out because we have used up all of our memory in the page table. 
+
+If we run free, we delete any instance of the page anywhere on the system and free the spot in the page table
+
+---------
+Determining if a memory heirarchy is full
+---------
+Option 1:
+	iterate through page table and increment a counter when we see an allocated page in a certain level
+
+Option 2:
+	Keep a counter for the number of items in each level and increment/decrement as needed
+
+
+----------
+page table holds a thousand entries
+to determine if memory is full, we can iterate through the page table and stop when a page has allocated == 0.
+
+The lower levels of the memory heirarchy are going to stay as full as possible. 
+
+
+When we add a page to the table, store a pointer to its location in the memory heirarchy. When we free, we just have to "unallocate" any reference to this item in memory
