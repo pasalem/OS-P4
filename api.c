@@ -93,7 +93,8 @@ int * accessIntPtr (vAddr address){
 	}
 
 	//We either found nothing, or the item is not in RAM
-	if(best_page -> level == 999){
+	if(best_page -> level == 999){}
+
 		printf("Tried to access an item that couldn't be found anywhere!\n");
 		exit(1);
 	} else{
@@ -107,6 +108,22 @@ int * accessIntPtr (vAddr address){
 // Any previous pointers in memory are considered invalid and can't be used
 // if user calls this function
 void unlockMemory(vAddr address){
+	int index = 0;
+
+	for(index = 0; index < SIZE_PAGE_TABLE; index++){
+		if(page_table[index]->locked == TRUE){
+			page_table[index]->locked = FALSE;
+			if(memory_count[RAM_LEVEL] == SIZE_RAM){
+				if(memory_count[SSD_LEVEL] < SIZE_SSD){
+					evict_page( SSD_LEVEL );
+				}
+				else {
+					evict_page( HDD_LEVEL );
+				}
+			}
+		}
+	}
+
 }
 
 // User can free memory when user is done with the memory page
@@ -125,7 +142,7 @@ void freeMemory(vAddr address){
 
 void addPage(int level, vAddr address){
 	page new_page;
-	new_page.address = address;	//Page refers to this spot in memory
+	new_page.address = address;		//Page refers to this spot in memory
 	new_page.locked = 0;			//Page is unlocked by default
 	new_page.referenced = 0;		//Page is unreferenced by default
 	new_page.allocated = 1;			//Page is allocated by default
