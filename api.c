@@ -7,8 +7,25 @@ void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
 void addPage(int level, vAddr address);
 
+vAddr LRU(){
+
+}
+
+vAddr second_chance(){
+	
+}
+
 //Make space for another page in some level
 vAddr evict_page(int level){
+	switch(algorithm){
+		case 0:
+			LRU();
+			break;
+		case 1:
+			second_chance();
+			break;
+	}
+
 	//Take a parameter when the program is run to determine which eviction algorithm to use
 	
 	//We take a level parameter because sometimes it is necessary 
@@ -136,8 +153,22 @@ void memoryMaxer() {
 	}
 }
 
+void usage(){
+	printf("Please specify proper arguments:\n\t0 - LRU \n\t1 - Second Chance\n");
+	exit(1);
+}
+
 //Run the actual memory management tool
-int main(){
+int main(int argc, char * argv[]){
+	if( argc != 2){
+		usage();
+	}
+
+	algorithm = atoi( argv[1] );
+	if(algorithm != 0 && algorithm != 1){
+		usage();
+	}
+
 	srand(time(NULL));
 	memoryMaxer();
 }

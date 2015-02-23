@@ -26,6 +26,7 @@ typedef struct page{
 	int level;
 } page;
 
+int algorithm; //0 - LRU, 1 - Second Chance
 
 int memory_count[3];
 int page_count = 0;
