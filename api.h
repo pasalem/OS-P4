@@ -27,9 +27,7 @@ typedef struct page{
 } page;
 
 
-int ram_count = 0;
-int ssd_count = 0;
-int hdd_count = 0;
+int memory_count[3];
 int page_count = 0;
 
 int RAM[SIZE_RAM];

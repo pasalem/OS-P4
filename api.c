@@ -34,10 +34,13 @@ vAddr allocateNewInt(){
 		return -1;
 	}
 
-	if(ram_count < SIZE_RAM ){
+	if(memory_count[RAM_LEVEL] < SIZE_RAM ){
 		//RAM has a free spot
-		addPage(RAM_LEVEL, ram_count);
-		RAM[ram_count] = 1;
+		int open_index = memory_count[RAM_LEVEL];
+		addPage(RAM_LEVEL, open_index );
+		memory_count[RAM_LEVEL]++;
+		RAM[open_index] = rand() % 100;
+		return memory_count[RAM_LEVEL] - 1;
 	} else{
 		//Still have to write this
 		evict_page(RAM_LEVEL);
@@ -51,10 +54,16 @@ vAddr allocateNewInt(){
 // (if page must be brought into RAM, and all RAM is locked)
 int * accessIntPtr (vAddr address){
 	int index = 0;
-	page *best_page;
+	page *best_page = (page *) malloc( sizeof( page ));
 	best_page->level = 999;
+	printf("Looking for an item with address %d\n", address);
 	for(index = 0; index < SIZE_PAGE_TABLE; index++){
-		if(page_table[index].address == address && page_table[index].level < best_page->level){
+		//If the page table has an entry with this address, and it's at a lower level than anything else we've found
+		//And it is currently in use, then update our best_page entry
+		page current_page = page_table[index];
+		printf("Checking page table entry with address %d, level %d, allocated %d\n", current_page.address, current_page.level, current_page.allocated);
+		if(current_page.address == address && current_page.level < best_page->level && current_page.allocated){
+			printf("Found a best match in RAM\n");
 			best_page = &page_table[index];
 		}
 
@@ -69,6 +78,7 @@ int * accessIntPtr (vAddr address){
 	//We either found nothing, or the item is not in RAM
 	if(best_page -> level == 999){
 		printf("Tried to access an item that couldn't be found anywhere!\n");
+		exit(1);
 	} else{
 		//The item we wanted isn't in RAM, evict a page if necessary to put it there
 		evict_page( RAM_LEVEL );
@@ -89,6 +99,9 @@ void freeMemory(vAddr address){
 	for(index = 0; index < SIZE_PAGE_TABLE; index++){
 		if( page_table[index].address == address){
 			page_table[index].allocated = 0;
+			int level = page_table[index].level;
+			//Decrement the number of open slots at this memory level
+			memory_count[level]--;
 		}
 	}
 }
@@ -100,19 +113,8 @@ void addPage(int level, vAddr address){
 	new_page.referenced = 0;		//Page is unreferenced by default
 	new_page.allocated = 1;			//Page is allocated by default
 	new_page.level = level;
-	page_table[page_count] = new_page;
 
-	switch(level){
-		case RAM_LEVEL:
-			ram_count++;
-			break;
-		case SSD_LEVEL:
-			ssd_count++;
-			break;
-		case HDD_LEVEL:
-			hdd_count++;
-			break;
-	}
+	page_table[page_count] = new_page;
 	page_count++;
 	printf("Added page %d\n", page_count);
 }
@@ -124,8 +126,8 @@ void memoryMaxer() {
 	int index = 0;
 	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
 		indexes[index] = allocateNewInt();
-		//int *value = accessIntPtr(indexes[index]);
-		//*value = (index * 3);
+		int *value = accessIntPtr(indexes[index]);
+		*value = (index * 3);
 		unlockMemory(indexes[index]);
 	}
 
