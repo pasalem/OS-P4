@@ -5,8 +5,23 @@ vAddr allocateNewInt();
 int * accessIntPtr (vAddr address);
 void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
-void addPage(int level, vAddr *location);
+void addPage(int level, vAddr address);
 
+//Make space for another page in some level
+vAddr evict_page(int level){
+	//Take a parameter when the program is run to determine which eviction algorithm to use
+	
+	//We take a level parameter because sometimes it is necessary 
+	//to move a page from, for example, SSD to HDD (not always RAM to SSD)
+
+	//Check if the level we want to evict from is full
+	//If the level is full, then run eviction on the level.
+		//move evicted_page out
+		//Put inserted_page in it's place
+		//Add a new page table entries for both pages
+	//If the level isn't full
+		//add a new page table entry for inserted_page
+}
 
 // Reserves memory location, sizeof(int)
 // Must be created in emulated RAM, pushing other pages 
@@ -21,19 +36,11 @@ vAddr allocateNewInt(){
 
 	if(ram_count < SIZE_RAM ){
 		//RAM has a free spot
-		RAM[ram_count] = ram_count;
-		addPage(RAM_LEVEL, &RAM[ram_count]);
-	} else if(ssd_count < SIZE_SSD){
-		//SSD has a free spot
-		SSD[ssd_count] = ssd_count;
-		addPage(SSD_LEVEL, &SSD[ssd_count]);
-	} else if(hdd_count < SIZE_HDD){
-		//HDD has a free spot
-		HDD[hdd_count] = hdd_count;
-		addPage(HDD_LEVEL, &HDD[hdd_count]);
+		addPage(RAM_LEVEL, ram_count);
+		RAM[ram_count] = 1;
 	} else{
-		//Nothing is free!
-		printf("The entire heirarchy has been filled %d %d %d %d\n", ram_count, ssd_count, hdd_count, page_count);
+		//Still have to write this
+		evict_page(RAM_LEVEL);
 	}
 }
 
@@ -43,6 +50,29 @@ vAddr allocateNewInt(){
 // Returns NULL if pointer cannot be provided 
 // (if page must be brought into RAM, and all RAM is locked)
 int * accessIntPtr (vAddr address){
+	int index = 0;
+	page *best_page;
+	best_page->level = 999;
+	for(index = 0; index < SIZE_PAGE_TABLE; index++){
+		if(page_table[index].address == address && page_table[index].level < best_page->level){
+			best_page = &page_table[index];
+		}
+
+		//If we found the item in RAM, set it to dirty, lock it, and return the value
+		if(best_page->level == 0){
+			best_page->dirty = TRUE;
+			best_page->locked = TRUE;
+			return &RAM[best_page->address];
+		}
+	}
+
+	//We either found nothing, or the item is not in RAM
+	if(best_page -> level == 999){
+		printf("Tried to access an item that couldn't be found anywhere!\n");
+	} else{
+		//The item we wanted isn't in RAM, evict a page if necessary to put it there
+		evict_page( RAM_LEVEL );
+	}
 }
 
 // Memory must be unlocked when user is done with it
@@ -57,15 +87,15 @@ void unlockMemory(vAddr address){
 void freeMemory(vAddr address){
 	int index = 0;
 	for(index = 0; index < SIZE_PAGE_TABLE; index++){
-		if( *page_table[index].location == address){
+		if( page_table[index].address == address){
 			page_table[index].allocated = 0;
 		}
 	}
 }
 
-void addPage(int level, vAddr *location){
+void addPage(int level, vAddr address){
 	page new_page;
-	new_page.location = location;	//Page refers to this spot in memory
+	new_page.address = address;	//Page refers to this spot in memory
 	new_page.locked = 0;			//Page is unlocked by default
 	new_page.referenced = 0;		//Page is unreferenced by default
 	new_page.allocated = 1;			//Page is allocated by default
@@ -106,6 +136,7 @@ void memoryMaxer() {
 
 //Run the actual memory management tool
 int main(){
+	srand(time(NULL));
 	memoryMaxer();
 }
 

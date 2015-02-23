@@ -1,14 +1,47 @@
-Process
-
-We have three levels in the heirarchy:
-	-RAM (25 vAddrs)
-	-SSD (100 vAddrs)
-	-HDD (1000 vAddrs)
+RAM has address space 0-24
+SSD has address space 0-99
+HDD has address spce 0-999
 
 
-we have a page table, which contains information about each page on the system.
-The page table contains 1000 page entries
+---------
+Determining if a memory heirarchy is full
+---------
 
+	Keep a counter for the number of items in each level and increment/decrement as needed
+
+	Or should we reference the page table to determine this?
+
+---------
+Functions
+---------
+
+allocateNewInt will:
+	-put an item in the next available spot in RAM
+	-if necessary, evict an item from RAM using a page replacement algorithm
+		+put the old values in RAM higher up in the memory heirarchy
+	-returns the value of the newly taken spot in RAM
+
+
+accessIntPtr will:
+	-Make a pass through the page table. Keep a best match page struct to fill.
+	-If we find an item in the page table that has the given address, save it to the page struct above.
+	-Keep looking. if we find an allocated page at a lower level, update the best match page. 
+	-If we end up finding a match in RAM, return it.
+	-if the page is not in RAM, run the eviction algorithm, put it in RAM
+
+---------
+Page Table
+---------
+
+For each item in any level of the system's storage, we keep a page table entry
+This table stores the following about each entry:
+
+	Location - (vAddr) the location of the item in storage (ranges from 0-999)
+	Locked - whether or not the memory is currently locked or not
+	Dirty - Do we need to write the item to the upper levels, or can we just get rid of it?
+	Referenced - whether or not the item has been referenced recently
+	Allocated - whether or not the space is in use or not
+	Level - what storage level the item is in (RAM, SSD, HDD...)
 
 -------------------------
 Dealing with page faults
@@ -21,31 +54,3 @@ Dealing with page faults
 	5. Return control to the program, transparently retrying the instruction that caused the page fault.
 
 
-If we run allocate 25 times, it will immedietly add 25 entries to the RAM array and make 25 entries in the page table
-
-If we allocate more than 25 times, but less than 125 times, the system will swap old values in RAM to the SSD and bring new items into RAM
-
-if we allocate more than 125 times but less than 1000 times without freeing, then the system will swap old values in RAM into the SSD and then old values in the SSD into the HDD
-
-if we allocate more than 1000 times without freeing, the system will freak out because we have used up all of our memory in the page table. 
-
-If we run free, we delete any instance of the page anywhere on the system and free the spot in the page table
-
----------
-Determining if a memory heirarchy is full
----------
-Option 1:
-	iterate through page table and increment a counter when we see an allocated page in a certain level
-
-Option 2:
-	Keep a counter for the number of items in each level and increment/decrement as needed
-
-
-----------
-page table holds a thousand entries
-to determine if memory is full, we can iterate through the page table and stop when a page has allocated == 0.
-
-The lower levels of the memory heirarchy are going to stay as full as possible. 
-
-
-When we add a page to the table, store a pointer to its location in the memory heirarchy. When we free, we just have to "unallocate" any reference to this item in memory
