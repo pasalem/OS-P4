@@ -85,7 +85,7 @@ int * accessIntPtr (vAddr address){
 		}
 
 		//If we found the item in RAM, set it to dirty, lock it, and return the value
-		if(best_page->level == 0){
+		if(best_page->level == RAM_LEVEL){
 			best_page->dirty = TRUE;
 			best_page->locked = TRUE;
 			return &RAM[best_page->address];
