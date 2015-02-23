@@ -1,20 +1,14 @@
-#include <unistd.h>
-#include <string.h>
-
-#define MAX_VADDRESSES 1000	// System limited to 1000 virtual memory pages
-#define MAX_RAM 25			// Access time immediate
-#define MAX_SSD 1000 		// Access time usleep 0.25 sec
-#define MAX_DISK 1000		// Access time usleep 2.5 sec
-
+#include "api.h"
 // Delay times also occur when values are written to these levels
 
+int main(){
+	
+}
 
 vAddr allocateNewInt();
 int * accessIntPtr (vAddr address);
 void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
-
-vAddr indexes[i];
 
 
 // Reserves memory location, sizeof(int)
