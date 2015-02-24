@@ -17,6 +17,7 @@
 
 typedef signed short vAddr;
 
+//Page node
 typedef struct page{
 	vAddr address;	//A pointer to the page
 	int locked;			//whether or not the page is locked
@@ -26,8 +27,17 @@ typedef struct page{
 	int level;
 } page;
 
-int algorithm; //0 - LRU, 1 - Second Chance
 
+//Queue node
+typedef struct page_node{
+	page *data;
+	struct page_node *next;
+}page_node;
+
+page_node *front;
+page_node *rear;
+
+int algorithm; //0 - LRU, 1 - Second Chance
 int memory_count[3];
 int page_count = 0;
 

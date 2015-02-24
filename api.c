@@ -7,22 +7,97 @@ void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
 void addPage(int level, vAddr address);
 
-vAddr LRU(){
+//Add an item to the end of the queue
+void enq(page *data){
+	if (rear == NULL){
+		rear = (page_node *)malloc(sizeof(page_node));
+		rear-> next = NULL;
+		rear-> data = data;
+		front = rear;
+	} else{
+		page_node *temp = (page_node *)malloc(sizeof(page_node));
+		temp -> data = data;
+		temp -> next = NULL;
+		rear-> next = temp;
+		rear = temp;
+	}
+}
+
+//Pops the top element from the queue
+void deq(){
+	page_node *temp = (page_node *)malloc(sizeof(page_node));
+	temp = front;
+	if(temp == NULL){
+		printf("Can't dequeue empty queue\n");
+		return;
+	} else{
+		if( temp -> data != NULL){
+			printf("Dequeued page with level %d and address %d\n", temp->data->level, temp->data->address);
+			free(front);
+			front = temp -> next;
+		} else{
+			printf("Dequeued last page with level %d and address %d\n", temp->data->level, temp->data->address);
+			free(front);
+			front = NULL;
+			rear = NULL;
+		}
+	}
+}
+
+
+//Print the contents of th queue
+void print_queue(){
+	page_node *current = (page_node *)malloc(sizeof(page_node));
+	current = front;
+	if(front == NULL && rear == NULL){
+		printf("Queue empty\n");
+		return;
+	}
+	while(current -> next != NULL){
+		printf("Page at level %d and address %d\n", current->data->level, current->data->address);
+		current = current -> next;
+	}
+	if(current -> next == NULL){
+		printf("Page at level %d and address %d\nEND\n", current->data->level, current->data->address);
+	}
+}
+
+vAddr LRU(int level){
 
 }
 
-vAddr second_chance(){
-	
+//Evict using the second chance algorithm
+vAddr second_chance(int level){
+	page *top_choice = front->data;
+	//While the item at the back of the list has referenced set
+	while(top_choice->referenced){
+		//Reset the referenced bit
+		top_choice->referenced = 0;
+		top_choice->allocated = 0;
+		//Put the page back at the end of the queue
+		deq();
+		enq(top_choice);
+		top_choice = front->data;
+	}
+	//top_choice has not been referenced, we can evict it
+	printf("Evicting page from address %d of level %d\n", top_choice->address, top_choice->level);
+	deq();
+	addPage(top_choice->level + 1, memory_count[top_choice->level + 1]);
+	memory_count[top_choice->level]--;
+
+
+
 }
 
 //Make space for another page in some level
 vAddr evict_page(int level){
 	switch(algorithm){
 		case 0:
-			LRU();
+			LRU(level);
 			break;
 		case 1:
-			second_chance();
+			printf("Evicting page from level %d with second chance\n", level);
+			second_chance(level);
 			break;
 	}
 
@@ -51,11 +126,10 @@ vAddr allocateNewInt(){
 		return -1;
 	}
 
+	//If the number of occupied spots in Ram is less than the size of RAM
 	if(memory_count[RAM_LEVEL] < SIZE_RAM ){
-		//RAM has a free spot
 		int open_index = memory_count[RAM_LEVEL];
 		addPage(RAM_LEVEL, open_index );
-		memory_count[RAM_LEVEL]++;
 		RAM[open_index] = rand() % 100;
 		return memory_count[RAM_LEVEL] - 1;
 	} else{
@@ -73,14 +147,13 @@ int * accessIntPtr (vAddr address){
 	int index = 0;
 	page *best_page = (page *) malloc( sizeof( page ));
 	best_page->level = 999;
-	printf("Looking for an item with address %d\n", address);
+	//printf("Looking for an item with address %d\n", address);
 	for(index = 0; index < SIZE_PAGE_TABLE; index++){
 		//If the page table has an entry with this address, and it's at a lower level than anything else we've found
 		//And it is currently in use, then update our best_page entry
 		page current_page = page_table[index];
-		printf("Checking page table entry with address %d, level %d, allocated %d\n", current_page.address, current_page.level, current_page.allocated);
+		//printf("Checking page table entry with address %d, level %d, allocated %d\n", current_page.address, current_page.level, current_page.allocated);
 		if(current_page.address == address && current_page.level < best_page->level && current_page.allocated){
-			printf("Found a best match in RAM\n");
 			best_page = &page_table[index];
 		}
 
@@ -88,13 +161,13 @@ int * accessIntPtr (vAddr address){
 		if(best_page->level == RAM_LEVEL){
 			best_page->dirty = TRUE;
 			best_page->locked = TRUE;
+			best_page->referenced = 1;
 			return &RAM[best_page->address];
 		}
 	}
 
 	//We either found nothing, or the item is not in RAM
-	if(best_page -> level == 999){}
-
+	if(best_page -> level == 999){
 		printf("Tried to access an item that couldn't be found anywhere!\n");
 		exit(1);
 	} else{
@@ -111,8 +184,8 @@ void unlockMemory(vAddr address){
 	int index = 0;
 
 	for(index = 0; index < SIZE_PAGE_TABLE; index++){
-		if(page_table[index]->locked == TRUE){
-			page_table[index]->locked = FALSE;
+		if(page_table[index].locked == TRUE){
+			page_table[index].locked = FALSE;
 			if(memory_count[RAM_LEVEL] == SIZE_RAM){
 				if(memory_count[SSD_LEVEL] < SIZE_SSD){
 					evict_page( SSD_LEVEL );
@@ -141,6 +214,10 @@ void freeMemory(vAddr address){
 }
 
 void addPage(int level, vAddr address){
+	if(level > 2){
+		printf("Tried to add a page to an invalid level\n");
+		exit(1);
+	}
 	page new_page;
 	new_page.address = address;		//Page refers to this spot in memory
 	new_page.locked = 0;			//Page is unlocked by default
@@ -149,8 +226,11 @@ void addPage(int level, vAddr address){
 	new_page.level = level;
 
 	page_table[page_count] = new_page;
+	enq( &page_table[page_count] );
 	page_count++;
 	printf("Added page %d\n", page_count);
+	memory_count[level]++;
+	print_queue();
 }
 
 //Allocate, access, update, unlock, and free memory

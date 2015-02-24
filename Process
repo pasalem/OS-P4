@@ -7,9 +7,11 @@ HDD has address spce 0-999
 Determining if a memory heirarchy is full
 ---------
 
-	Keep a counter for the number of items in each level and increment/decrement as needed
+	Keep a counter for the number of items in each level and increment/decrement as needed. If we do this, though, what happens if things are removed in memory out of place? Then we have lost the last available space. 
 
-	Or should we reference the page table to determine this?
+	We need a method to determine where the first open spot in memory is. If we just use a counter, then memory assumes we are always adding to spot 24. 
+
+
 
 ---------
 Functions
