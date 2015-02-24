@@ -36,11 +36,9 @@ void deq(){
 		return;
 	} else{
 		if( temp -> data != NULL){
-			printf("Dequeued page with level %d and address %d\n", temp->data->level, temp->data->address);
 			free(front);
 			front = temp -> next;
 		} else{
-			printf("Dequeued last page with level %d and address %d\n", temp->data->level, temp->data->address);
 			free(front);
 			front = NULL;
 			rear = NULL;
@@ -54,10 +52,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(250000);
+		usleep(25000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500000);
+		usleep(250000);
 	}
 }
 
@@ -126,7 +124,6 @@ vAddr evict_page(int level){
 		case 0:
 			return LRU(level);
 		case 1:
-			printf("Evicting page from level %d with second chance\n", level);
 			return second_chance(level);
 	}
 }
@@ -145,7 +142,33 @@ vAddr second_chance(int level){
 		top_choice = front->data;
 	}
 
+	top_choice -> allocated = 0;
+	//Set the memory back to unused
+	switch( top_choice->level ){
+		case(RAM_LEVEL):
+			RAM[top_choice->address] = 0;
+			break;
+		case(SSD_LEVEL):
+			SSD[top_choice->address] = 0;
+			break;
+		case(HDD_LEVEL):
+			HDD[top_choice->address] = 0;
+			break;
+	}
 
+	//Find the next available spot in the next lowest memory location
+	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
+	if(free_physical_address == -1){
+		//The next level is full too, so we need to evict at the next level, additionally. 
+		printf(KRED "Level %d is full, but also the next level, %d is full!\n\n\n\n" RESET, level, top_choice->level + 1 );
+		return evict_page(top_choice->level + 1);
+	} else{
+		//We found space, for the item at the next level, we just need to wait and add a page entry
+		printf(KRED "Level %d full, so we are evicting page %d to level %d\n" RESET, level, top_choice->address, top_choice->level + 1 );
+		deq();
+		delay(top_choice->level + 1);
+		return add_page(top_choice->level +1, free_physical_address);
+	}
 }
 
 vAddr LRU(int level){
@@ -164,8 +187,9 @@ int find_open_page(){
 	exit(1);
 }
 
-//Adds a page entry to the table
-void add_page(int level, int physical_address){
+//Adds a page entry to the table and allocates the open spot
+//Returns the virtual address of the new added page
+int add_page(int level, int physical_address){
 	if(level > 2){
 		printf("Tried to add a page to an invalid level\n");
 		exit(1);
@@ -178,10 +202,17 @@ void add_page(int level, int physical_address){
 	new_page.allocated = 1;					//Page is allocated by default
 	new_page.level = level;
 
+	if(level == RAM_LEVEL)
+		RAM[physical_address] = 1;
+	else if(level == SSD_LEVEL)
+		SSD[physical_address] = 1;
+	else
+		HDD[physical_address] = 1;
+
 	int index = find_open_page();
 	page_table[index] = new_page;
 	enq(&page_table[index]);
-
+	return index;
 }
 
 // Reserves memory location, sizeof(int)
@@ -192,7 +223,6 @@ vAddr allocateNewInt(){
 	int physical_address = find_open_memory(RAM_LEVEL);
 	//There is physical space in RAM
 	if(physical_address >= 0){
-		printf("Found an open spot in RAM at position %d\n", physical_address);
 		int virtual_address = find_open_page();
 		add_page(RAM_LEVEL, physical_address);
 		return virtual_address;
@@ -209,7 +239,29 @@ vAddr allocateNewInt(){
 // Returns NULL if pointer cannot be provided 
 // (if page must be brought into RAM, and all RAM is locked)
 int * accessIntPtr (vAddr address){
-
+	int counter;
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
+		page *page_item = (page *)malloc(sizeof(page));
+		page_item = &page_table[address];
+		//if( page_item->allocated && page_item->address == address){
+			//If the page is in RAM already, just return a pointer to it
+			if(page_item->level == RAM_LEVEL){
+				printf("Moved the item down to ram. page %d has level %d and address %d\n", address, page_item->level, page_item->address);
+				return &RAM[page_item->address];
+			} else{
+				//Find an open spot in the next lowest level
+				int free_memory = find_open_memory(page_item->level -1);
+				if( free_memory < 0){
+					evict_page(page_item->level - 1);
+					return accessIntPtr(address);
+				} else{
+					//There is space in the next lowest level
+					add_page(page_item->level -1, free_memory);
+					return accessIntPtr(address);
+				}
+			}
+		//}
+	}
 }
 
 // Memory must be unlocked when user is done with it
@@ -242,6 +294,7 @@ void memoryMaxer() {
 	int index = 0;
 	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
 		indexes[index] = allocateNewInt();				//returns the address of the newly allocated item in RAM
+		print_page_table();
 		int *value = accessIntPtr(indexes[index]);		//returns a pointer to the spot in ram
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[index]);
