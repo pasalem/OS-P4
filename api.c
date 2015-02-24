@@ -39,6 +39,9 @@ delay(int level){
 	}
 }
 
+
+//Returns -1 if the level is full, 
+//otherwise returns the address of the first open position
 vAddr find_open_spot(int level){
 	int counter = 0;
 	switch(level){
@@ -122,6 +125,8 @@ vAddr second_chance(int level){
 	page *top_choice = front->data;
 	//While the item at the back of the list has referenced set
 	while(top_choice->referenced){
+		//TODO:
+		//Adjust the queuing mechanism so that we have a queue for each heirarchy
 		//Reset the referenced bit
 		top_choice->referenced = 0;
 		printf(KBLU "Giving page from address %d of level %d a second chance\n" RESET, top_choice->address, top_choice->level);
@@ -132,8 +137,8 @@ vAddr second_chance(int level){
 	}
 	//top_choice has not been referenced, we can evict it
 	printf(KRED "Evicting page from address %d of level %d\n" RESET, top_choice->address, top_choice->level);
-	deq();
 	//Free top_choice's spot in memory and let something else use it
+	top_choice -> allocated = 0;
 	switch( top_choice->level ){
 		case(RAM_LEVEL):
 			RAM[top_choice->address] = 0;
@@ -149,9 +154,13 @@ vAddr second_chance(int level){
 	//Find the next available spot in the next lowest memory location
 	vAddr spot = find_open_spot(top_choice->level + 1);
 	if(spot == -1){
-		//The next level is full too, we need to evict from this level, too. 
+		//The next level is full too, so we need to evict at the next level, additionally. 
+		printf(KRED "Level %d is full, but also the next level, %d is full!\n\n\n\n" RESET, level, top_choice->level + 1 );
 		return evict_page(top_choice->level + 1);
 	} else{
+		//We found space, for the item at the next level, we just need to wait and add a page entry
+		printf(KRED "Level %d full, but level %d has a free spot at %d\n" RESET, level, top_choice->level + 1, spot );
+		//deq();
 		delay(top_choice->level + 1);
 		addPage(top_choice->level + 1, spot);
 		return spot;
@@ -176,7 +185,7 @@ vAddr allocateNewInt(){
 	//If there is an open spot in RAM
 	int open_spot = find_open_spot(RAM_LEVEL);
 	if(open_spot >= 0){
-		printf("Found an open spot at position %d\n", open_spot);
+		printf("Found an open spot in RAM at position %d\n", open_spot);
 		addPage(RAM_LEVEL, open_spot );
 		return open_spot;
 	} else{
@@ -296,7 +305,7 @@ void print_page_table(){
 	int counter = 0;
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if(page_table[counter].allocated){
-			printf(KBLU" Page on level %d has address %d \n", page_table[counter].level, page_table[counter].address);
+			printf(KBLU" Page on level %d has address %d \n" RESET, page_table[counter].level, page_table[counter].address);
 		}
 	}
 }
