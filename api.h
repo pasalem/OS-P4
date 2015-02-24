@@ -11,6 +11,11 @@
 #define TRUE 1
 #define FALSE 0
 
+#define KBLU  "\x1B[34m"
+#define KCYN  "\x1B[36m"
+#define KRED  "\x1B[31m"
+#define RESET "\033[0m"
+
 #define RAM_LEVEL 0
 #define SSD_LEVEL 1
 #define HDD_LEVEL 2
@@ -44,4 +49,5 @@ int page_count = 0;
 int RAM[SIZE_RAM];
 int SSD[SIZE_SSD];
 int HDD[SIZE_HDD];
+
 page page_table[SIZE_PAGE_TABLE];

@@ -11,6 +11,8 @@ Determining if a memory heirarchy is full
 
 	We need a method to determine where the first open spot in memory is. If we just use a counter, then memory assumes we are always adding to spot 24. 
 
+	iterate through the page table and find the first spot that 
+
 
 
 ---------

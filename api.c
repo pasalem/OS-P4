@@ -6,6 +6,9 @@ int * accessIntPtr (vAddr address);
 void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
 void addPage(int level, vAddr address);
+void print_page_table();
+vAddr second_chance(int level);
+vAddr LRU(int level);
 
 //Add an item to the end of the queue
 void enq(page *data){
@@ -21,6 +24,47 @@ void enq(page *data){
 		rear-> next = temp;
 		rear = temp;
 	}
+}
+
+//Delay the transfer
+delay(int level){
+	if(level == RAM_LEVEL){
+		return;
+	}
+	if(level == SSD_LEVEL){
+		usleep(250000);
+	}
+	if(level == HDD_LEVEL){
+		usleep(2500000);
+	}
+}
+
+vAddr find_open_spot(int level){
+	int counter = 0;
+	switch(level){
+		case RAM_LEVEL:
+			for(counter = 0; counter < SIZE_RAM; counter++){
+				if(RAM[counter] == 0){
+					return counter;
+				}
+			}
+		break;
+		case SSD_LEVEL:
+			for(counter = 0; counter < SIZE_SSD; counter++){
+				if(SSD[counter] == 0){
+					return counter;
+				}
+			}
+		break;
+		case HDD_LEVEL:
+			for(counter = 0; counter < SIZE_HDD; counter++){
+				if(HDD[counter] == 0){
+					return counter;
+				}
+			}
+		break;
+	}
+	return -1;
 }
 
 //Pops the top element from the queue
@@ -62,8 +106,15 @@ void print_queue(){
 	}
 }
 
-vAddr LRU(int level){
-
+//Make space for another page in some level
+vAddr evict_page(int level){
+	switch(algorithm){
+		case 0:
+			return LRU(level);
+		case 1:
+			printf("Evicting page from level %d with second chance\n", level);
+			return second_chance(level);
+	}
 }
 
 //Evict using the second chance algorithm
@@ -73,46 +124,42 @@ vAddr second_chance(int level){
 	while(top_choice->referenced){
 		//Reset the referenced bit
 		top_choice->referenced = 0;
-		top_choice->allocated = 0;
+		printf(KBLU "Giving page from address %d of level %d a second chance\n" RESET, top_choice->address, top_choice->level);
 		//Put the page back at the end of the queue
 		deq();
 		enq(top_choice);
 		top_choice = front->data;
 	}
 	//top_choice has not been referenced, we can evict it
-	printf("Evicting page from address %d of level %d\n", top_choice->address, top_choice->level);
+	printf(KRED "Evicting page from address %d of level %d\n" RESET, top_choice->address, top_choice->level);
 	deq();
-	addPage(top_choice->level + 1, memory_count[top_choice->level + 1]);
-	memory_count[top_choice->level]--;
-
-
-
-}
-
-//Make space for another page in some level
-vAddr evict_page(int level){
-	switch(algorithm){
-		case 0:
-			LRU(level);
+	//Free top_choice's spot in memory and let something else use it
+	switch( top_choice->level ){
+		case(RAM_LEVEL):
+			RAM[top_choice->address] = 0;
 			break;
-		case 1:
-			printf("Evicting page from level %d with second chance\n", level);
-			second_chance(level);
+		case(SSD_LEVEL):
+			SSD[top_choice->address] = 0;
+			break;
+		case(HDD_LEVEL):
+			HDD[top_choice->address] = 0;
 			break;
 	}
 
-	//Take a parameter when the program is run to determine which eviction algorithm to use
-	
-	//We take a level parameter because sometimes it is necessary 
-	//to move a page from, for example, SSD to HDD (not always RAM to SSD)
+	//Find the next available spot in the next lowest memory location
+	vAddr spot = find_open_spot(top_choice->level + 1);
+	if(spot == -1){
+		//The next level is full too, we need to evict from this level, too. 
+		return evict_page(top_choice->level + 1);
+	} else{
+		delay(top_choice->level + 1);
+		addPage(top_choice->level + 1, spot);
+		return spot;
+	}
+}
 
-	//Check if the level we want to evict from is full
-	//If the level is full, then run eviction on the level.
-		//move evicted_page out
-		//Put inserted_page in it's place
-		//Add a new page table entries for both pages
-	//If the level isn't full
-		//add a new page table entry for inserted_page
+vAddr LRU(int level){
+
 }
 
 // Reserves memory location, sizeof(int)
@@ -126,15 +173,15 @@ vAddr allocateNewInt(){
 		return -1;
 	}
 
-	//If the number of occupied spots in Ram is less than the size of RAM
-	if(memory_count[RAM_LEVEL] < SIZE_RAM ){
-		int open_index = memory_count[RAM_LEVEL];
-		addPage(RAM_LEVEL, open_index );
-		RAM[open_index] = rand() % 100;
-		return memory_count[RAM_LEVEL] - 1;
+	//If there is an open spot in RAM
+	int open_spot = find_open_spot(RAM_LEVEL);
+	if(open_spot >= 0){
+		printf("Found an open spot at position %d\n", open_spot);
+		addPage(RAM_LEVEL, open_spot );
+		return open_spot;
 	} else{
-		//Still have to write this
 		evict_page(RAM_LEVEL);
+		return allocateNewInt();
 	}
 }
 
@@ -168,7 +215,7 @@ int * accessIntPtr (vAddr address){
 
 	//We either found nothing, or the item is not in RAM
 	if(best_page -> level == 999){
-		printf("Tried to access an item that couldn't be found anywhere!\n");
+		printf("Tried to access an item that couldn't be found anywhere! ADDRESS %d\n", address);
 		exit(1);
 	} else{
 		//The item we wanted isn't in RAM, evict a page if necessary to put it there
@@ -196,7 +243,6 @@ void unlockMemory(vAddr address){
 			}
 		}
 	}
-
 }
 
 // User can free memory when user is done with the memory page
@@ -225,12 +271,34 @@ void addPage(int level, vAddr address){
 	new_page.allocated = 1;			//Page is allocated by default
 	new_page.level = level;
 
+	switch(level){
+		case RAM_LEVEL:
+			RAM[address] = 1;
+			break;
+		case SSD_LEVEL:
+			SSD[address] = 1;
+			break;
+		case HDD_LEVEL:
+			HDD[address] = 1;
+			break;
+	}
+
 	page_table[page_count] = new_page;
 	enq( &page_table[page_count] );
 	page_count++;
 	printf("Added page %d\n", page_count);
 	memory_count[level]++;
-	print_queue();
+	//print_queue();
+	print_page_table();
+}
+
+void print_page_table(){
+	int counter = 0;
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
+		if(page_table[counter].allocated){
+			printf(KBLU" Page on level %d has address %d \n", page_table[counter].level, page_table[counter].address);
+		}
+	}
 }
 
 //Allocate, access, update, unlock, and free memory
@@ -241,7 +309,7 @@ void memoryMaxer() {
 	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
 		indexes[index] = allocateNewInt();
 		int *value = accessIntPtr(indexes[index]);
-		*value = (index * 3);
+		*value = (index * 3) + 1;
 		unlockMemory(indexes[index]);
 	}
 
