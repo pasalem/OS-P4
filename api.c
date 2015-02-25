@@ -110,11 +110,11 @@ void print_queue(){
 		return;
 	}
 	while(current -> next != NULL){
-		printf("Page at level %d and address %d\n", current->data->level, current->data->address);
+		printf("Page at level %d and address %d with referenced %d\n", current->data->level, current->data->address, current->data->referenced);
 		current = current -> next;
 	}
 	if(current -> next == NULL){
-		printf("Page at level %d and address %d\nEND\n", current->data->level, current->data->address);
+		printf("Page at level %d and address %d with referenced %d\nEND\n", current->data->level, current->data->address, current->data->referenced);
 	}
 }
 
@@ -130,18 +130,21 @@ vAddr evict_page(int level){
 
 //Evict using the second chance algorithm
 vAddr second_chance(int level){
-	page *top_choice = front->data;
+	page_node *current = front;
 
-	while(top_choice->referenced){
-		//Reset the referenced bit
-		top_choice->referenced = 0;
-		printf(KBLU "Giving page from address %d of level %d a second chance\n" RESET, top_choice->address, top_choice->level);
-		//Put the page back at the end of the queue
+	while(current -> data -> referenced || current -> data -> level != level || current -> data -> allocated == FALSE){
+		if( current -> data -> level != level || current -> data -> allocated == FALSE){
+			current = current -> next;
+			continue;
+		}
+
+		current -> data -> referenced = FALSE;
 		deq();
-		enq(top_choice);
-		top_choice = front->data;
+		enq( current -> data );
+		current = front;
 	}
 
+	page *top_choice = current -> data;
 	top_choice -> allocated = 0;
 	//Set the memory back to unused
 	switch( top_choice->level ){
@@ -158,17 +161,9 @@ vAddr second_chance(int level){
 
 	//Find the next available spot in the next lowest memory location
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
-	if(free_physical_address == -1){
-		//The next level is full too, so we need to evict at the next level, additionally. 
-		printf(KRED "Level %d is full, but also the next level, %d is full!\n\n\n\n" RESET, level, top_choice->level + 1 );
-		return evict_page(top_choice->level + 1);
-	} else{
-		//We found space, for the item at the next level, we just need to wait and add a page entry
-		printf(KRED "Level %d full, so we are evicting page %d to level %d\n" RESET, level, top_choice->address, top_choice->level + 1 );
-		deq();
-		delay(top_choice->level + 1);
-		return add_page(top_choice->level +1, free_physical_address);
-	}
+	deq();
+	delay(top_choice->level + 1);
+	return add_page(top_choice->level + 1, free_physical_address);
 }
 
 vAddr LRU(int level){
@@ -206,18 +201,8 @@ vAddr LRU(int level){
 
 	//Find the next available spot in the next lowest memory location
 	vAddr free_physical_address = find_open_memory(page_item->level + 1);
-	if(free_physical_address == -1){
-		//The next level is full too, so we need to evict at the next level, additionally. 
-		printf(KRED "Level %d is full, but also the next level, %d is full!\n\n\n\n" RESET, page_item->level, page_item->level + 1);
-		delay(page_item->level + 1);
-		return add_page(page_item->level +1, free_physical_address);
-		//return evict_page(page_item->level + 1);
-	} else{
-		//We found space, for the item at the next level, we just need to wait and add a page entry
-		printf(KRED "Level %d full, so we are evicting page %d to level %d\n" RESET, level, page_item->address, page_item->level + 1 );
-		delay(page_item->level + 1);
-		return add_page(page_item->level +1, free_physical_address);
-	}
+	delay(page_item->level + 1);
+	return add_page(page_item->level +1, free_physical_address);
 }
 
 //Finds the next unused page table index
@@ -342,12 +327,12 @@ void memoryMaxer() {
 	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
 		printf("Counter has value %d\n", index);
 		indexes[index] = allocateNewInt();				//returns the address of the newly allocated item in RAM
+		print_page_table();
 		int *value = accessIntPtr(indexes[index]);		//returns a pointer to the spot in ram
+		//print_queue();
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[index]);
 	}
-	print_page_table();
-
 	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
 		freeMemory(indexes[index]);
 	}
