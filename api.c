@@ -148,7 +148,7 @@ vAddr second_chance(int level){
 	page_node *current = front;
 
 	while(current -> data -> referenced || current -> data -> level != level || current -> data -> allocated == FALSE){
-		if( current -> data -> level != level || current -> data -> allocated == FALSE){
+		if( current -> data -> level != level || current -> data -> allocated == FALSE || current -> data -> locked){
 			current = current -> next;
 			continue;
 		}
@@ -160,6 +160,7 @@ vAddr second_chance(int level){
 	page *top_choice = current -> data;
 	clear_memory_position(top_choice);
 	//Find the next available spot in the next lowest memory location
+	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
 	deq();
 	delay(top_choice->level + 1);
@@ -167,15 +168,14 @@ vAddr second_chance(int level){
 }
 
 vAddr LRU(int level){
-	printf("Trying to evict a page from level %d\n", level);
+	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 	page *page_item = (page *)malloc(sizeof(page));
 	int counter;
 	int match = FALSE;
 	gettimeofday(&page_item->last_used,NULL);
-	printf("Evicting from level %d, Time since epoch %ld\n", level, page_item->last_used.tv_sec);
 
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
-		if( page_table[counter].level != level || !page_table[counter].allocated){
+		if( page_table[counter].level != level || !page_table[counter].allocated || page_table[counter].locked){
 			continue;
 		}
 
@@ -275,6 +275,7 @@ int * accessIntPtr (vAddr address){
 		page_item = &page_table[address];
 		//If the page is in RAM already, just return a pointer to it
 		if(page_item->level == RAM_LEVEL){
+			page_item->locked = TRUE;
 			return &RAM[page_item->address];
 		} else{
 			//Find an open spot in the next lowest level
@@ -290,13 +291,19 @@ int * accessIntPtr (vAddr address){
 // Any previous pointers in memory are considered invalid and can't be used
 // if user calls this function
 void unlockMemory(vAddr address){
+	page *page_to_unlock = &page_table[address];
+	page_to_unlock->locked = FALSE;
 
 }
 
 // User can free memory when user is done with the memory page
 // Frees page in memory, and deletes any swapped out copies of page
 void freeMemory(vAddr address){
-
+	page *page_to_free = &page_table[address];
+	page_to_free -> allocated = 0;
+	page_to_free -> locked = 0;
+	page_to_free -> referenced = 0;
+	page_to_free -> locked = 0;
 }
 
 void print_page_table(){
@@ -313,16 +320,15 @@ void print_page_table(){
 void memoryMaxer() {
 	vAddr indexes[SIZE_PAGE_TABLE];
 	int index = 0;
-	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
+	for (index = 0; index < 150; ++index) {
 		printf("Counter has value %d\n", index);
 		indexes[index] = allocateNewInt();				//returns the address of the newly allocated item in RAM
-		print_page_table();
 		int *value = accessIntPtr(indexes[index]);		//returns a pointer to the spot in ram
-		//print_queue();
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[index]);
 	}
-	for (index = 0; index < SIZE_PAGE_TABLE; ++index) {
+	print_page_table();
+	for (index = 0; index < 150; ++index) {
 		freeMemory(indexes[index]);
 	}
 }
