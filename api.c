@@ -52,10 +52,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(250000);
+		usleep(25000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500000);
+		usleep(25000);
 	}
 }
 
@@ -170,12 +170,18 @@ vAddr LRU(int level){
 	printf("Trying to evict a page from level %d\n", level);
 	page *page_item = (page *)malloc(sizeof(page));
 	int counter;
-	int match = -1;
+	int match = FALSE;
 	gettimeofday(&page_item->last_used,NULL);
+	printf("Evicting from level %d, Time since epoch %ld\n", level, page_item->last_used.tv_sec);
 
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
-		if(page_table[counter].last_used.tv_usec < page_item->last_used.tv_usec
-			&& page_item->level == level && page_item->allocated){
+		if( page_table[counter].level != level || !page_table[counter].allocated){
+			continue;
+		}
+
+		double compare_time = (page_table[counter].last_used.tv_usec/1000000.0) + page_table[counter].last_used.tv_sec;
+		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
+		if( compare_time < best_time ) {
 			page_item = &page_table[counter];
 			match = TRUE;
 		}
