@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <limits.h>
 
 #define SIZE_RAM 25			// Access time immediate
 #define SIZE_SSD 100 		// Access time usleep 0.25 sec
@@ -30,6 +31,7 @@ typedef struct page{
 	int allocated;		//Whether or not this page is taken or not
 	int dirty;
 	int level;
+	struct timeval last_used;
 } page;
 
 

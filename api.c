@@ -171,17 +171,17 @@ vAddr LRU(int level){
 	page *page_item = (page *)malloc(sizeof(page));
 	int counter;
 	int match = -1;
-	//Evict the first item we can
+	gettimeofday(&page_item->last_used,NULL);
+
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
-		page_item = &page_table[counter];
-		if(page_item->level == level && page_item->allocated){
-			//page_item->allocated = 0;
-			match = counter;
-			break;
+		if(page_table[counter].last_used.tv_usec < page_item->last_used.tv_usec
+			&& page_item->level == level && page_item->allocated){
+			page_item = &page_table[counter];
+			match = TRUE;
 		}
 	}
 
-	if(match < 0){
+	if(match == FALSE){
 		printf("Nothing to evict\n");
 		exit(1);
 	}
@@ -224,6 +224,7 @@ vAddr add_page(int level, int physical_address){
 	new_page.referenced = 0;				//Page is unreferenced by default
 	new_page.allocated = 1;					//Page is allocated by default
 	new_page.level = level;
+	gettimeofday(&new_page.last_used, NULL);
 
 	if(level == RAM_LEVEL)
 		RAM[physical_address] = 1;
