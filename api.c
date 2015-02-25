@@ -148,7 +148,7 @@ vAddr second_chance(int level){
 	page_node *current = front;
 
 	while(current -> data -> referenced || current -> data -> level != level || current -> data -> allocated == FALSE){
-		if( current -> data -> level != level || current -> data -> allocated == FALSE || current -> data -> locked){
+		if( current -> data -> level != level || current -> data -> allocated == FALSE){
 			current = current -> next;
 			continue;
 		}
@@ -158,13 +158,13 @@ vAddr second_chance(int level){
 		current = front;
 	}
 	page *top_choice = current -> data;
-	clear_memory_position(top_choice);
 	//Find the next available spot in the next lowest memory location
 	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
 	deq();
 	delay(top_choice->level + 1);
-	return add_page(top_choice->level + 1, free_physical_address);
+	int addr = add_page(top_choice->level + 1, free_physical_address);
+	clear_memory_position(top_choice);
 }
 
 vAddr LRU(int level){
@@ -178,7 +178,6 @@ vAddr LRU(int level){
 		if( page_table[counter].level != level || !page_table[counter].allocated || page_table[counter].locked){
 			continue;
 		}
-
 		double compare_time = (page_table[counter].last_used.tv_usec/1000000.0) + page_table[counter].last_used.tv_sec;
 		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
 		if( compare_time < best_time ) {
@@ -192,11 +191,12 @@ vAddr LRU(int level){
 		exit(1);
 	}
 
-	clear_memory_position(page_item);
 	//Find the next available spot in the next lowest memory location
 	vAddr free_physical_address = find_open_memory(page_item->level + 1);
 	delay(page_item->level + 1);
-	return add_page(page_item->level +1, free_physical_address);
+	vAddr addr = add_page(page_item->level +1, free_physical_address);
+	clear_memory_position(page_item);
+	return addr;
 }
 
 //Finds the next unused page table index
@@ -273,14 +273,15 @@ int * accessIntPtr (vAddr address){
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		page *page_item = (page *)malloc(sizeof(page));
 		page_item = &page_table[address];
+		page_item->locked = TRUE;
 		//If the page is in RAM already, just return a pointer to it
 		if(page_item->level == RAM_LEVEL){
-			page_item->locked = TRUE;
 			return &RAM[page_item->address];
 		} else{
 			//Find an open spot in the next lowest level
 			int free_memory = find_open_memory(page_item->level -1);
 			add_page(page_item->level -1, free_memory);
+			page_item->allocated = 0;
 			return accessIntPtr(address);
 		}
 	}
@@ -333,6 +334,25 @@ void memoryMaxer() {
 	}
 }
 
+void thrash() {
+	vAddr indexes[SIZE_PAGE_TABLE];
+	int index = 0;
+	for (index = 0; index < 1000; ++index) {
+		printf("Counter has value %d\n", index);
+		indexes[index] = allocateNewInt();
+		int random = rand() % (index + 1) ;
+		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
+		*value = (index * 3) + 1;
+		unlockMemory(indexes[index]);
+	}
+	print_page_table();
+	for (index = 0; index < 1000; ++index) {
+		freeMemory(indexes[index]);
+	}
+}
+
+
+
 void usage(){
 	printf("Please specify proper arguments:\n\t0 - LRU \n\t1 - Second Chance\n");
 	exit(1);
@@ -340,6 +360,7 @@ void usage(){
 
 //Run the actual memory management tool
 int main(int argc, char * argv[]){
+	srand(time(NULL));
 	if( argc != 2){
 		usage();
 	}
@@ -350,7 +371,7 @@ int main(int argc, char * argv[]){
 	}
 
 	init();
-	memoryMaxer();
+	thrash();
 }
 
 
