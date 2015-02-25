@@ -5,9 +5,9 @@ vAddr allocateNewInt();
 int * accessIntPtr (vAddr address);
 void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
-void addPage(int level, vAddr address);
 void print_page_table();
 vAddr second_chance(int level);
+vAddr add_page(int level, int physical_address);
 vAddr LRU(int level);
 void init();
 
@@ -172,7 +172,47 @@ vAddr second_chance(int level){
 }
 
 vAddr LRU(int level){
+	page *page_item = (page *)malloc(sizeof(page));
+	int counter;
+	int match;
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
+		page_item = &page_table[counter];
+		if(page_item->level == level && page_item->allocated){
+			page_item->allocated = 0;
+			match = counter;
+		}
+	}
 
+	if(match < 0){
+		printf("Nothing to evict\n");
+		exit(1);
+	}
+
+	//Set the memory back to unused
+	switch( page_item->level ){
+		case(RAM_LEVEL):
+			RAM[page_item->address] = 0;
+			break;
+		case(SSD_LEVEL):
+			SSD[page_item->address] = 0;
+			break;
+		case(HDD_LEVEL):
+			HDD[page_item->address] = 0;
+			break;
+	}
+
+	//Find the next available spot in the next lowest memory location
+	vAddr free_physical_address = find_open_memory(page_item->level + 1);
+	if(free_physical_address == -1){
+		//The next level is full too, so we need to evict at the next level, additionally. 
+		printf(KRED "Level %d is full, but also the next level, %d is full!\n\n\n\n" RESET, level, page_item->level + 1 );
+		return evict_page(level + 1);
+	} else{
+		//We found space, for the item at the next level, we just need to wait and add a page entry
+		printf(KRED "Level %d full, so we are evicting page %d to level %d\n" RESET, level, page_item->address, page_item->level + 1 );
+		delay(page_item->level + 1);
+		return add_page(page_item->level +1, free_physical_address);
+	}
 }
 
 //Finds the next unused page table index
@@ -189,7 +229,7 @@ int find_open_page(){
 
 //Adds a page entry to the table and allocates the open spot
 //Returns the virtual address of the new added page
-int add_page(int level, int physical_address){
+vAddr add_page(int level, int physical_address){
 	if(level > 2){
 		printf("Tried to add a page to an invalid level\n");
 		exit(1);
@@ -243,24 +283,22 @@ int * accessIntPtr (vAddr address){
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		page *page_item = (page *)malloc(sizeof(page));
 		page_item = &page_table[address];
-		//if( page_item->allocated && page_item->address == address){
-			//If the page is in RAM already, just return a pointer to it
-			if(page_item->level == RAM_LEVEL){
-				printf("Moved the item down to ram. page %d has level %d and address %d\n", address, page_item->level, page_item->address);
-				return &RAM[page_item->address];
+		//If the page is in RAM already, just return a pointer to it
+		if(page_item->level == RAM_LEVEL){
+			printf("Moved page down to RAM. page %d has level %d and address %d\n", address, page_item->level, page_item->address);
+			return &RAM[page_item->address];
+		} else{
+			//Find an open spot in the next lowest level
+			int free_memory = find_open_memory(page_item->level -1);
+			if( free_memory < 0){
+				evict_page(page_item->level - 1);
+				return accessIntPtr(address);
 			} else{
-				//Find an open spot in the next lowest level
-				int free_memory = find_open_memory(page_item->level -1);
-				if( free_memory < 0){
-					evict_page(page_item->level - 1);
-					return accessIntPtr(address);
-				} else{
-					//There is space in the next lowest level
-					add_page(page_item->level -1, free_memory);
-					return accessIntPtr(address);
-				}
+				//There is space in the next lowest level
+				add_page(page_item->level -1, free_memory);
+				return accessIntPtr(address);
 			}
-		//}
+		}
 	}
 }
 
@@ -321,7 +359,6 @@ int main(int argc, char * argv[]){
 		usage();
 	}
 
-	srand(time(NULL));
 	init();
 	memoryMaxer();
 }

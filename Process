@@ -6,14 +6,9 @@ HDD has address spce 0-999
 ---------
 Determining if a memory heirarchy is full
 ---------
+At the very beginning, all pages in the table are unallocated (allocated = 0)
 
-	Keep a counter for the number of items in each level and increment/decrement as needed. If we do this, though, what happens if things are removed in memory out of place? Then we have lost the last available space. 
-
-	We need a method to determine where the first open spot in memory is. If we just use a counter, then memory assumes we are always adding to spot 24. 
-
-	iterate through the page table and find the first spot that 
-
-
+We go through the page table and count the number of times we see an item at the desired level with allocated == 1. If the number is less than the capacity of the memory level, then there is space. 
 
 ---------
 Functions
@@ -21,17 +16,19 @@ Functions
 
 allocateNewInt will:
 	-put an item in the next available spot in RAM
-	-if necessary, evict an item from RAM using a page replacement algorithm
-		+put the old values in RAM higher up in the memory heirarchy
-	-returns the value of the newly taken spot in RAM
+	-If ram is full, evict a page and try to allocate again.
+	-return the vAddr of the newly added page (0-999)
 
 
 accessIntPtr will:
-	-Make a pass through the page table. Keep a best match page struct to fill.
-	-If we find an item in the page table that has the given address, save it to the page struct above.
-	-Keep looking. if we find an allocated page at a lower level, update the best match page. 
-	-If we end up finding a match in RAM, return it.
-	-if the page is not in RAM, run the eviction algorithm, put it in RAM
+	-given an address, "x", between 0 and 999 (say, 234)
+	-Search the page table for an item with address x
+
+	-if the level of this entry is RAM, return a pointer to RAM[address]
+	-if the level is not RAM, check for a free spot in RAM
+		-if there is a free spot, update the page so that the address points to RAM's index  
+
+
 
 ---------
 Page Table
