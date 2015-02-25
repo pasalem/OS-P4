@@ -52,10 +52,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(25000);
+		usleep(250000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(25000);
+		usleep(2500000);
 	}
 }
 
@@ -128,6 +128,21 @@ vAddr evict_page(int level){
 	}
 }
 
+void clear_memory_position(page *page_to_clear){
+	switch( page_to_clear->level ){
+		case(RAM_LEVEL):
+			RAM[page_to_clear->address] = 0;
+			break;
+		case(SSD_LEVEL):
+			SSD[page_to_clear->address] = 0;
+			break;
+		case(HDD_LEVEL):
+			HDD[page_to_clear->address] = 0;
+			break;
+	}
+	page_to_clear -> allocated = 0;
+}
+
 //Evict using the second chance algorithm
 vAddr second_chance(int level){
 	page_node *current = front;
@@ -137,28 +152,13 @@ vAddr second_chance(int level){
 			current = current -> next;
 			continue;
 		}
-
 		current -> data -> referenced = FALSE;
 		deq();
 		enq( current -> data );
 		current = front;
 	}
-
 	page *top_choice = current -> data;
-	top_choice -> allocated = 0;
-	//Set the memory back to unused
-	switch( top_choice->level ){
-		case(RAM_LEVEL):
-			RAM[top_choice->address] = 0;
-			break;
-		case(SSD_LEVEL):
-			SSD[top_choice->address] = 0;
-			break;
-		case(HDD_LEVEL):
-			HDD[top_choice->address] = 0;
-			break;
-	}
-
+	clear_memory_position(top_choice);
 	//Find the next available spot in the next lowest memory location
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
 	deq();
@@ -175,7 +175,7 @@ vAddr LRU(int level){
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
 		page_item = &page_table[counter];
 		if(page_item->level == level && page_item->allocated){
-			page_item->allocated = 0;
+			//page_item->allocated = 0;
 			match = counter;
 			break;
 		}
@@ -186,19 +186,7 @@ vAddr LRU(int level){
 		exit(1);
 	}
 
-	//Set the memory back to unused
-	switch( page_item->level ){
-		case(RAM_LEVEL):
-			RAM[page_item->address] = 0;
-			break;
-		case(SSD_LEVEL):
-			SSD[page_item->address] = 0;
-			break;
-		case(HDD_LEVEL):
-			HDD[page_item->address] = 0;
-			break;
-	}
-
+	clear_memory_position(page_item);
 	//Find the next available spot in the next lowest memory location
 	vAddr free_physical_address = find_open_memory(page_item->level + 1);
 	delay(page_item->level + 1);
@@ -284,14 +272,8 @@ int * accessIntPtr (vAddr address){
 		} else{
 			//Find an open spot in the next lowest level
 			int free_memory = find_open_memory(page_item->level -1);
-			if( free_memory < 0){
-				evict_page(page_item->level - 1);
-				return accessIntPtr(address);
-			} else{
-				//There is space in the next lowest level
-				add_page(page_item->level -1, free_memory);
-				return accessIntPtr(address);
-			}
+			add_page(page_item->level -1, free_memory);
+			return accessIntPtr(address);
 		}
 	}
 }
