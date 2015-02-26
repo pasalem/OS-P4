@@ -196,6 +196,7 @@ vAddr LRU(int level){
 	delay(page_item->level + 1);
 	vAddr addr = add_page(page_item->level +1, free_physical_address);
 	clear_memory_position(page_item);
+	printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
 	return addr;
 }
 
@@ -253,9 +254,7 @@ vAddr allocateNewInt(){
 	int physical_address = find_open_memory(RAM_LEVEL);
 	//There is physical space in RAM
 	if(physical_address >= 0){
-		int virtual_address = find_open_page();
-		add_page(RAM_LEVEL, physical_address);
-		return virtual_address;
+		return add_page(RAM_LEVEL, physical_address);
 	//RAM is full
 	} else{
 		evict_page(RAM_LEVEL);
@@ -270,20 +269,18 @@ vAddr allocateNewInt(){
 // (if page must be brought into RAM, and all RAM is locked)
 int * accessIntPtr (vAddr address){
 	int counter;
-	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
-		page *page_item = (page *)malloc(sizeof(page));
-		page_item = &page_table[address];
-		page_item->locked = TRUE;
-		//If the page is in RAM already, just return a pointer to it
-		if(page_item->level == RAM_LEVEL){
-			return &RAM[page_item->address];
-		} else{
-			//Find an open spot in the next lowest level
-			int free_memory = find_open_memory(page_item->level -1);
-			add_page(page_item->level -1, free_memory);
-			page_item->allocated = 0;
-			return accessIntPtr(address);
-		}
+	page *page_item = (page *)malloc(sizeof(page));
+	page_item = &page_table[address];
+	page_item->locked = TRUE;
+	//If the page is in RAM already, just return a pointer to it
+	if(page_item->level == RAM_LEVEL){
+		printf("Found vAddr %d in RAM\n", address);
+		return &RAM[page_item->address];
+	} else{
+		//Find an open spot in the next lowest level
+		int free_memory = find_open_memory(page_item->level -1);
+		add_page(page_item->level -1, free_memory);
+		return accessIntPtr(address);
 	}
 }
 
@@ -338,9 +335,11 @@ void thrash() {
 	vAddr indexes[SIZE_PAGE_TABLE];
 	int index = 0;
 	for (index = 0; index < 1000; ++index) {
-		printf("Counter has value %d\n", index);
+		printf("Allocating new int  %d\n", index);
 		indexes[index] = allocateNewInt();
+
 		int random = rand() % (index + 1) ;
+		printf("Accessing vAddr %d\n", random);
 		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[index]);
