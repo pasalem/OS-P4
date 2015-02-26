@@ -54,7 +54,8 @@ int RAM[SIZE_RAM];
 int SSD[SIZE_SSD];
 int HDD[SIZE_HDD];
 
-sem_t table_lock;
+sem_t open_spot_lock[3];
+sem_t table_spot_lock;
 sem_t RAM_lock[SIZE_RAM];
 sem_t SSD_lock[SIZE_SSD];
 sem_t HDD_lock[SIZE_HDD];

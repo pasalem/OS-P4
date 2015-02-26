@@ -13,7 +13,12 @@ void init();
 
 void init(){
 	int counter;
+	sem_init(&table_spot_lock,0,1);
+
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
+		if(counter < 3){
+			sem_init(&open_spot_lock[counter],0,1);
+		}
 		if(counter < 25){
 			RAM[counter] = 0;
 			sem_init( &RAM_lock[counter],0,1);
@@ -165,7 +170,11 @@ vAddr second_chance(int level){
 	page *top_choice = current -> data;
 	//Find the next available spot in the next lowest memory location
 	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
+
+	sem_wait(&open_spot_lock[top_choice->level + 1]);
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
+	sem_post(&open_spot_lock[top_choice->level + 1]);
+
 	deq();
 	delay(top_choice->level + 1);
 	int addr = add_page(top_choice->level + 1, free_physical_address);
@@ -176,7 +185,7 @@ vAddr LRU(int level){
 	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 	page *page_item = (page *)malloc(sizeof(page));
 	int counter;
-	int match = FALSE;
+	int match = -1;
 	gettimeofday(&page_item->last_used,NULL);
 
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
@@ -188,11 +197,11 @@ vAddr LRU(int level){
 		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
 		if( compare_time < best_time ) {
 			page_item = &page_table[counter];
-			match = TRUE;
+			match = counter;
 		}
 	}
 
-	if(match == FALSE){
+	if(match == -1){
 		printf("Nothing to evict\n");
 		exit(1);
 	}
@@ -201,7 +210,10 @@ vAddr LRU(int level){
 	printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
 
 	//Ensure that there is space at the next level to evict to
+	sem_wait(&open_spot_lock[page_item->level + 1]);
 	vAddr free_physical_address = find_open_memory(page_item->level + 1);
+	sem_post(&open_spot_lock[page_item->level + 1]);
+
 	clear_memory_position(page_item); //Make space at level "level"
 	add_page(page_item->level +1, free_physical_address);
 }
@@ -228,27 +240,33 @@ vAddr add_page(int level, int physical_address){
 
 	if(physical_address == -1){
 		evict_page(level);
+
+		sem_wait(&open_spot_lock[level]);
 		physical_address = find_open_memory(level);
+		sem_post(&open_spot_lock[level]);
 	}
 
-	page new_page;
-	new_page.address = physical_address;	//Page refers to this spot in physical memory
-	new_page.locked = 0;					//Page is unlocked by default
-	new_page.referenced = 0;				//Page is unreferenced by default
-	new_page.allocated = 1;					//Page is allocated by default
-	new_page.level = level;
-	gettimeofday(&new_page.last_used, NULL);
-
-	if(level == RAM_LEVEL)
-		RAM[physical_address] = 1;
-	else if(level == SSD_LEVEL)
-		SSD[physical_address] = 1;
-	else
-		HDD[physical_address] = 1;
-
+	sem_wait(&table_spot_lock);
 	int index = find_open_page();
-	page_table[index] = new_page;
+	sem_post(&table_spot_lock);
+
+	page_table[index].address = physical_address;	//Page refers to this spot in physical memory
+	page_table[index].locked = 0;					//Page is unlocked by default
+	page_table[index].referenced = 0;				//Page is unreferenced by default
+	page_table[index].allocated = 1;					//Page is allocated by default
+	page_table[index].level = level;
+	gettimeofday(&page_table[index].last_used, NULL);
 	enq(&page_table[index]);
+
+	if(level == RAM_LEVEL){
+		RAM[physical_address] = 1;
+	}else if(level == SSD_LEVEL){
+		SSD[physical_address] = 1;
+	}else{
+		HDD[physical_address] = 1;
+	}
+
+
 	return index;
 }
 
@@ -257,7 +275,10 @@ vAddr add_page(int level, int physical_address){
 // into lower layers of hierarchy, if full
 // Return -1 if no memory available
 vAddr allocateNewInt(){
+	sem_wait(&open_spot_lock[RAM_LEVEL]);
 	int physical_address = find_open_memory(RAM_LEVEL);
+	sem_post(&open_spot_lock[RAM_LEVEL]);
+
 	return add_page(RAM_LEVEL, physical_address);
 }
 
@@ -281,7 +302,10 @@ int * accessIntPtr (vAddr address){
 		int free_memory = -1;
 		while(free_memory < 0){
 			evict_page(page_item -> level -1);
+
+			sem_wait(&open_spot_lock[page_item->level - 1]);
 			free_memory = find_open_memory(page_item -> level -1);
+			sem_post(&open_spot_lock[page_item->level - 1]);
 		}
 
 		clear_memory_position(page_item);
@@ -375,11 +399,13 @@ int main(int argc, char * argv[]){
 	}
 
 	init();
+	/*
 	pthread_t thread1, thread2;
-	//pthread_create(&thread1, NULL, &thrash, NULL);
-	//pthread_create(&thread2, NULL, &thrash, NULL);
-	//pthread_join(thread1, NULL);
-	//pthread_join(thread2, NULL);
+	pthread_create(&thread1, NULL, &thrash, NULL);
+	pthread_create(&thread2, NULL, &thrash, NULL);
+	pthread_join(thread1, NULL);
+	pthread_join(thread2, NULL);
+	*/
 	thrash();
 	//memoryMaxer();
 }
