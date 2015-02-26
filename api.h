@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <limits.h>
+#include <semaphore.h>
 
 #define SIZE_RAM 25			// Access time immediate
 #define SIZE_SSD 100 		// Access time usleep 0.25 sec
@@ -31,6 +32,7 @@ typedef struct page{
 	int allocated;		//Whether or not this page is taken or not
 	int dirty;
 	int level;
+	sem_t page_lock;
 	struct timeval last_used;
 } page;
 
@@ -51,5 +53,11 @@ int page_count = 0;
 int RAM[SIZE_RAM];
 int SSD[SIZE_SSD];
 int HDD[SIZE_HDD];
+
+sem_t table_lock;
+sem_t RAM_lock[SIZE_RAM];
+sem_t SSD_lock[SIZE_SSD];
+sem_t HDD_lock[SIZE_HDD];
+
 
 page page_table[SIZE_PAGE_TABLE];

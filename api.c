@@ -11,6 +11,26 @@ vAddr add_page(int level, int physical_address);
 vAddr LRU(int level);
 void init();
 
+void init(){
+	int counter;
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
+		if(counter < 25){
+			RAM[counter] = 0;
+			sem_init( &RAM_lock[counter],0,1);
+		}
+		if(counter < 100){
+			sem_init(&SSD_lock[counter],0,1);
+			SSD[counter] = 0;
+		}
+		if( counter < 1000){
+			HDD[counter] = 0;
+			page_table[counter].allocated = 0;
+			sem_init(&HDD_lock[counter],0,1);
+			sem_init(&page_table[counter].page_lock,0,1);
+		}
+	}
+}
+
 //Add an item to the end of the queue
 void enq(page *data){
 	if (rear == NULL){
@@ -85,21 +105,6 @@ vAddr find_open_memory(int level){
 
 	return -1;
 }
-
-void init(){
-	int counter;
-	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
-		if(counter < 25)
-			RAM[counter] = 0;
-		if(counter < 100)
-			SSD[counter] = 0;
-		if( counter < 1000){
-			HDD[counter] = 0;
-			page_table[counter].allocated = 0;
-		}
-	}
-}
-
 
 //Print the contents of th queue
 void print_queue(){
@@ -358,7 +363,6 @@ void usage(){
 	exit(1);
 }
 
-//Run the actual memory management tool
 int main(int argc, char * argv[]){
 	srand(time(NULL));
 	if( argc != 2){
@@ -371,6 +375,11 @@ int main(int argc, char * argv[]){
 	}
 
 	init();
+	pthread_t thread1, thread2;
+	//pthread_create(&thread1, NULL, &thrash, NULL);
+	//pthread_create(&thread2, NULL, &thrash, NULL);
+	//pthread_join(thread1, NULL);
+	//pthread_join(thread2, NULL);
 	thrash();
 	//memoryMaxer();
 }
