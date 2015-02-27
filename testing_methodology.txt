@@ -1,0 +1,20 @@
+We have three testing functions: memoryMaxer() and thrash().
+
+memoryMaxer() is similar to the function provide in the project spec, where we load in 1000
+as the max number of pages, then index through the page table, returning the address of the
+newly allocated item in RAM, then returns a pointer to that spot in RAM. After it goes through
+each entry, it unlocks the memory spot of the entry, then frees the entry.
+
+
+thrash() is a testing function that indexes through the page table, allocates a new entry in RAM, and then accesses a random page in the virtual address space, then unlocking and freeing. It works similar to memoryMaxer(), just choosing the page at random.
+We justify this test with the idea that it is random, so that idea that it works correctly
+demonstrates that our functionality works correctly as well.
+
+
+repeat_test() is a test that accesses virtual address 50 every 5 indexes after 100. This 
+was implemented to show that with LRU, pages that are accessed frequently stay in the faster
+levels of the memory hierarchy.
+
+
+lock_out_test() is similar to thrash, but memory is not unlocked. This test is done to show
+that locked pages cannot be evicted. 
