@@ -6,7 +6,7 @@ int * accessIntPtr (vAddr address);
 void unlockMemory(vAddr address);
 void freeMemory(vAddr address);
 void print_page_table();
-vAddr second_chance(int level);
+vAddr random_evict(int level);
 vAddr add_page(int level, int physical_address);
 vAddr LRU(int level);
 
@@ -47,10 +47,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(250000);
+		usleep(250);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500000);
+		usleep(2500);
 	}
 }
 
@@ -60,7 +60,7 @@ vAddr evict_page(int level){
 		case 0:
 			return LRU(level);
 		case 1:
-			return second_chance(level);
+			return random_evict(level);
 	}
 }
 
@@ -68,12 +68,15 @@ void unallocate_memory(page *page_to_clear){
 	switch( page_to_clear->level ){
 		case(RAM_LEVEL):
 			RAM[page_to_clear->address] = 0;
+			sem_post(&RAM_lock[page_to_clear->address]);
 			break;
 		case(SSD_LEVEL):
 			SSD[page_to_clear->address] = 0;
+			sem_post(&SSD_lock[page_to_clear->address]);
 			break;
 		case(HDD_LEVEL):
 			HDD[page_to_clear->address] = 0;
+			sem_post(&HDD_lock[page_to_clear->address]);
 			break;
 	}
 	page_to_clear -> allocated = 0;
@@ -82,18 +85,18 @@ void unallocate_memory(page *page_to_clear){
 void allocate_memory(int level, int physical_address){
 	if(level == RAM_LEVEL){
 		RAM[physical_address] = 1;
-		sem_post(&RAM_lock[physical_address]);
+		//sem_post(&RAM_lock[physical_address]);
 	}else if(level == SSD_LEVEL){
 		SSD[physical_address] = 1;
-		sem_post(&SSD_lock[physical_address]);
+		//sem_post(&SSD_lock[physical_address]);
 	}else{
 		HDD[physical_address] = 1;
-		sem_post(&HDD_lock[physical_address]);
+		//sem_post(&HDD_lock[physical_address]);
 	}
 }
 
-//Evict using the second chance algorithm
-vAddr second_chance(int level){
+//Randomly evict a valid page
+vAddr random_evict(int level){
 	int counter;
 	int match = -1;
 	page *options[SIZE_SSD]; //We'll never have more than 100 eviction candidates
@@ -108,17 +111,17 @@ vAddr second_chance(int level){
 	//We found no suitable page to evict
 	if(matches == 0){
 		printf("Nothing to evict\n");
-		exit(1);
+		pthread_exit();
+	}else{
+		int random = rand() % matches;
+		sem_wait(&(options[random]->page_lock));
+
+		//We found a valid page to evict in the level that we want to make space in
+		printf("Evicting page %d to level %d to make room at level %d\n", random, options[random]->level + 1, options[random]->level);
+		move_page(options[random], options[random]->level + 1);
+		//printf("Released the lock of page %d\n", match);
+		sem_post(&options[random]->page_lock);
 	}
-
-	int random = rand() % matches;
-	sem_wait(&(options[random]->page_lock));
-
-	//We found a valid page to evict in the level that we want to make space in
-	printf("Evicting page %d to level %d to make room at level %d\n", random, options[random]->level + 1, options[random]->level);
-	move_page(options[random], options[random]->level + 1);
-	//printf("Released the lock of page %d\n", match);
-	sem_post(&options[random]->page_lock);
 }
 
 //Evicts the page that has been accessed least recently
@@ -150,14 +153,13 @@ vAddr LRU(int level){
 	//We found no suitable page to evict
 	if(match == -1){
 		printf("Nothing to evict\n");
-		exit(1);
+		pthread_exit();
+	} else{
+		//We found a valid page to evict in the level that we want to make space in
+		printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
+		move_page(page_item, page_item -> level + 1);
+		sem_post(&page_table[match].page_lock);
 	}
-
-	//We found a valid page to evict in the level that we want to make space in
-	printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
-	move_page(page_item, page_item -> level + 1);
-	//printf("Released the lock of page %d\n", match);
-	sem_post(&page_table[match].page_lock);
 }
 
 //Finds the next unused page table index
@@ -174,7 +176,6 @@ vAddr find_open_page(){
 		}
 	}
 	printf("Page table is full!\n");
-	exit(1);
 }
 
 
@@ -231,7 +232,6 @@ vAddr add_page(int level, int physical_address){
 
 	page_table[index].address = physical_address;	//Page refers to this spot in physical memory
 	page_table[index].locked = 0;					//Page is unlocked by default
-	page_table[index].referenced = 1;
 	page_table[index].allocated = 1;					//Page is allocated by default
 	page_table[index].level = level;
 	gettimeofday(&page_table[index].last_used, NULL);
@@ -284,7 +284,6 @@ int * accessIntPtr (vAddr address){
 	page *page_item = (page *)malloc(sizeof(page));
 	page_item = &page_table[address];
 	page_item->locked = TRUE;
-	page_item->referenced = TRUE;
 	gettimeofday(&page_item->last_used, NULL);
 	//If the page is in RAM already, just return a pointer to it
 	if(page_item->level == RAM_LEVEL){
@@ -308,7 +307,6 @@ void freeMemory(vAddr address){
 	page *page_to_free = &page_table[address];
 	page_to_free -> allocated = 0;
 	page_to_free -> locked = 0;
-	page_to_free -> referenced = 0;
 	page_to_free -> locked = 0;
 }
 
@@ -361,10 +359,11 @@ void thrash() {
 	for (index = 0; index < 1000; ++index) {
 		freeMemory(indexes[index]);
 	}
+	print_page_table();
 }
 
 void usage(){
-	printf("Please specify proper arguments:\n\t0 - LRU \n\t1 - Second Chance\n");
+	printf("Please specify proper arguments:\n\t0 - LRU \n\t1 - Random eviction\n");
 	exit(1);
 }
 
@@ -386,9 +385,5 @@ int main(int argc, char * argv[]){
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
-	//thrash();
+	thrash();
 }
-
-
-
-

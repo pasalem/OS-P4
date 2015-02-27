@@ -28,7 +28,6 @@ typedef signed short vAddr;
 typedef struct page{
 	int address;
 	int locked;			//whether or not the page is locked
-	int referenced;		//Whether or not the page has been recently accessed (SC Algorithm)
 	int allocated;		//Whether or not this page is taken or not
 	int level;
 	sem_t page_lock;
