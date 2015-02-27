@@ -47,10 +47,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(2500);
+		usleep(250000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500);
+		usleep(2500000);
 	}
 }
 
@@ -294,9 +294,12 @@ int * accessIntPtr (vAddr address){
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
+		sem_wait(&page_table[address].page_lock);
 		move_page(page_item, page_item -> level - 1);
+		sem_post(&page_table[address].page_lock);
 		return accessIntPtr(address);
 	}
+	return NULL;
 }
 
 // Memory must be unlocked when user is done with it
@@ -319,8 +322,8 @@ void print_page_table(){
 	int counter = 0;
 	printf(KRED"------------START--------------\n" RESET);
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
-		if(page_table[counter].allocated){
-				printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
+		if(page_table[counter].level == 0){
+			printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
 		}
 	}
 	printf(KRED"------------END--------------\n" RESET);
