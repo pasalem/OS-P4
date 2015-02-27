@@ -133,10 +133,13 @@ void unallocate_memory(page *page_to_clear){
 void allocate_memory(int level, int physical_address){
 	if(level == RAM_LEVEL){
 		RAM[physical_address] = 1;
+		sem_post(&RAM_lock[physical_address]);
 	}else if(level == SSD_LEVEL){
 		SSD[physical_address] = 1;
+		sem_post(&SSD_lock[physical_address]);
 	}else{
 		HDD[physical_address] = 1;
+		sem_post(&HDD_lock[physical_address]);
 	}
 }
 
@@ -216,23 +219,31 @@ int find_open_memory(int level){
 	int counter = 0;
 	int size;
 	int *memory;
+	sem_t *memory_lock;
 	if(level == 0){
 		size = SIZE_RAM;
 		memory = &RAM[0];
+		memory_lock = &RAM_lock[0];
 	} else if(level == 1){
 		size = SIZE_SSD;
 		memory = &SSD[0];
+		memory_lock = &SSD_lock[0];
 	} else{
 		size = SIZE_HDD;
 		memory = &HDD[0];
+		memory_lock = &HDD_lock[0];
 	}
 
 	for(counter = 0; counter < size; counter++){
 		if(*(memory + counter) == 0){
-			return counter;
+			if( sem_trywait(&memory_lock[counter]) == 0){
+				return counter;
+			} else{
+				printf("Found a spot in memory, but there was already a lock on it\n");
+				continue;
+			}
 		}
 	}
-
 	return -1;
 }
 
@@ -265,8 +276,37 @@ vAddr add_page(int level, int physical_address){
 	allocate_memory(level, physical_address);
 	enq(&page_table[index]);
 
-
 	return index;
+}
+
+void move_page(page *page_to_move,int desired_level){
+	//Can't move more than 1 level up or down
+	if( abs(page_to_move->level - desired_level) != 1){
+		printf(KRED "Can't move more than 1 level up or down\n" RESET);
+		exit(1);
+	}
+
+	//Is there space available in the level we are looking for?
+	sem_wait(&open_spot_lock[desired_level]);
+	int physical_address = find_open_memory(desired_level);
+	sem_post(&open_spot_lock[desired_level]);
+
+	printf(KRED "Moving page from level %d to level %d\n" RESET, page_to_move -> level, desired_level);
+
+	if(physical_address == -1){
+		evict_page(desired_level);
+		sem_wait(&open_spot_lock[desired_level]);
+		physical_address = find_open_memory(desired_level);
+		sem_post(&open_spot_lock[desired_level]);
+	}
+
+	unallocate_memory(page_to_move);
+	delay(desired_level);
+	page_to_move->level = desired_level;
+	page_to_move -> address = physical_address;
+	page_to_move -> referenced = 1;
+	page_to_move -> allocated = 1;
+	allocate_memory(desired_level, physical_address);
 }
 
 // Reserves memory location, sizeof(int)
@@ -296,6 +336,7 @@ int * accessIntPtr (vAddr address){
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
+		gettimeofday(&page_item->last_used, NULL);
 		move_page(page_item, page_item -> level - 1);
 		return accessIntPtr(address);
 	}
@@ -306,39 +347,6 @@ int * accessIntPtr (vAddr address){
 void unlockMemory(vAddr address){
 	page_table[address].locked = 0;
 }
-
-void move_page(page *page_to_move,int desired_level){
-	//Can't move more than 1 level up or down
-	if( abs(page_to_move->level - desired_level) != 1){
-		printf(KRED "Can't move more than 1 level up or down\n" RESET);
-		exit(1);
-	}
-
-	//Is there space available in the level we are looking for?
-	sem_wait(&open_spot_lock[desired_level]);
-	int physical_address = find_open_memory(desired_level);
-	sem_post(&open_spot_lock[desired_level]);
-
-	printf(KRED "Moving page from level %d to level %d\n" RESET, page_to_move -> level, desired_level);
-
-	while(physical_address == -1){
-		evict_page(desired_level);
-		sem_wait(&open_spot_lock[desired_level]);
-		physical_address = find_open_memory(desired_level);
-		sem_post(&open_spot_lock[desired_level]);
-	}
-
-	unallocate_memory(page_to_move);
-	delay(desired_level);
-	page_to_move->level = desired_level;
-	page_to_move -> address = physical_address;
-	page_to_move -> referenced = 1;
-	page_to_move -> allocated = 1;
-	allocate_memory(desired_level, physical_address);
-	gettimeofday(&page_to_move->last_used, NULL);
-}
-
-
 
 // User can free memory when user is done with the memory page
 // Frees page in memory, and deletes any swapped out copies of page
