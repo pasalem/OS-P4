@@ -45,7 +45,7 @@ typedef struct page_node{
 page_node *front;
 page_node *rear;
 
-int algorithm; //0 - LRU, 1 - Second Chance
+int aaron; //0 - LRU, 1 - Second Chance
 int memory_count[3];
 int page_count = 0;
 

@@ -110,7 +110,7 @@ void print_queue(){
 
 //Make space for another page in some level
 vAddr evict_page(int level){
-	switch(algorithm){
+	switch(aaron){
 		case 0:
 			return LRU(level);
 		case 1:
@@ -150,30 +150,29 @@ void allocate_memory(int level, int physical_address){
 vAddr second_chance(int level){
 	page_node *current = front;
 
-	while(current -> data -> referenced || current -> data -> level != level || current -> data -> allocated == FALSE){
-		if( current -> data -> level != level || current -> data -> allocated == FALSE || current -> data -> locked){
+	while(current->data->referenced || current->data->level != level || current->data->allocated == FALSE){
+		if( current->data->level != level || current->data->allocated == FALSE || current->data->locked){
 			current = current -> next;
 			continue;
 		}
+		sem_wait(&(current->data->page_lock));
 		current -> data -> referenced = FALSE;
 		deq();
-		enq( current -> data );
+		enq(current -> data);
 		current = front;
 	}
 	page *top_choice = current -> data;
 	//Find the next available spot in the next lowest memory location
 	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 
-	sem_wait(&open_spot_lock[top_choice->level + 1]);
 	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
-	sem_post(&open_spot_lock[top_choice->level + 1]);
 
 	deq();
 	int addr = add_page(top_choice->level + 1, free_physical_address);
 }
 
+//Evicts the page that has been accessed least recently
 vAddr LRU(int level){
-	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
 	page *page_item = (page *)malloc(sizeof(page));
 	int counter;
 	int match = -1;
@@ -184,17 +183,16 @@ vAddr LRU(int level){
 			continue;
 		}
 		sem_wait(&page_table[counter].page_lock);
-		//printf("Took the lock of page %d\n", counter);
 		//Compare the eviction candidate's last used entry with the current OS time, find the page that was used least recently
 		double compare_time = (page_table[counter].last_used.tv_usec/1000000.0) + page_table[counter].last_used.tv_sec;
 		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
 		if( compare_time < best_time ) {
-			//printf("Released the lock of page %d\n", counter);
+			//Unlock the old page before we replace it
 			sem_post(&page_item->page_lock);
 			page_item = &page_table[counter];
 			match = counter;
 		} else{
-			//printf("Released the lock of page %d\n", counter);
+			//Release the lock of this page since it didn't make the cut
 			sem_post(&page_table[counter].page_lock);
 		}
 	}
@@ -233,6 +231,7 @@ vAddr find_open_page(){
 //Returns -1 if the level is full, 
 //otherwise returns the address of the first open position
 int find_open_memory(int level){
+	sem_wait(&open_spot_lock[level]);
 	int counter = 0;
 	int size;
 	int *memory;
@@ -254,13 +253,12 @@ int find_open_memory(int level){
 	for(counter = 0; counter < size; counter++){
 		if(*(memory + counter) == 0){
 			if( sem_trywait(&memory_lock[counter]) == 0){
+				sem_post(&open_spot_lock[level]);
 				return counter;
-			} else{
-				printf("Found a spot in memory, but there was already a lock on it\n");
-				continue;
 			}
 		}
 	}
+	sem_post(&open_spot_lock[level]);
 	return -1;
 }
 
@@ -274,15 +272,11 @@ vAddr add_page(int level, int physical_address){
 
 	while(physical_address == -1){
 		evict_page(level);
-
-		sem_wait(&open_spot_lock[level]);
 		physical_address = find_open_memory(level);
-		sem_post(&open_spot_lock[level]);
 	}
 
 	sem_wait(&table_spot_lock);
 	int index = find_open_page();
-	printf("Found open page %d\n", index);
 	sem_post(&table_spot_lock);
 
 	page_table[index].address = physical_address;	//Page refers to this spot in physical memory
@@ -305,17 +299,13 @@ void move_page(page *page_to_move,int desired_level){
 	}
 
 	//Is there space available in the level we are looking for?
-	sem_wait(&open_spot_lock[desired_level]);
 	int physical_address = find_open_memory(desired_level);
-	sem_post(&open_spot_lock[desired_level]);
 
 	printf(KRED "Moving page from level %d to level %d\n" RESET, page_to_move -> level, desired_level);
 
-	if(physical_address == -1){
+	while(physical_address == -1){
 		evict_page(desired_level);
-		sem_wait(&open_spot_lock[desired_level]);
 		physical_address = find_open_memory(desired_level);
-		sem_post(&open_spot_lock[desired_level]);
 	}
 
 	unallocate_memory(page_to_move);
@@ -332,9 +322,7 @@ void move_page(page *page_to_move,int desired_level){
 // into lower layers of hierarchy, if full
 // Return -1 if no memory available
 vAddr allocateNewInt(){
-	sem_wait(&open_spot_lock[RAM_LEVEL]);
 	int physical_address = find_open_memory(RAM_LEVEL);
-	sem_post(&open_spot_lock[RAM_LEVEL]);
 	return add_page(RAM_LEVEL, physical_address);
 }
 
@@ -348,12 +336,13 @@ int * accessIntPtr (vAddr address){
 	page *page_item = (page *)malloc(sizeof(page));
 	page_item = &page_table[address];
 	page_item->locked = TRUE;
+	page_item->referenced = TRUE;
+	gettimeofday(&page_item->last_used, NULL);
 	//If the page is in RAM already, just return a pointer to it
 	if(page_item->level == RAM_LEVEL){
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
-		gettimeofday(&page_item->last_used, NULL);
 		move_page(page_item, page_item -> level - 1);
 		return accessIntPtr(address);
 	}
@@ -381,7 +370,7 @@ void print_page_table(){
 	printf(KRED"------------START--------------\n" RESET);
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if(page_table[counter].allocated){
-			printf(KBLU" Page w/ vAddr %d on level %d has address %d and allocated %d and locked %d\n" RESET, counter, page_table[counter].level, page_table[counter].address, page_table[counter].allocated, page_table[counter].locked);
+			printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
 		}
 	}
 	printf(KRED"------------END--------------\n" RESET);
@@ -426,8 +415,6 @@ void thrash() {
 	}
 }
 
-
-
 void usage(){
 	printf("Please specify proper arguments:\n\t0 - LRU \n\t1 - Second Chance\n");
 	exit(1);
@@ -439,20 +426,18 @@ int main(int argc, char * argv[]){
 		usage();
 	}
 
-	algorithm = atoi( argv[1] );
-	if(algorithm != 0 && algorithm != 1){
+	//This variable was originally called "algorithm", 
+	//but my friend requested that I name a variable after him so...
+	aaron = atoi( argv[1] );
+	if(aaron != 0 && aaron != 1){
 		usage();
 	}
-
 	init();
-	
-	pthread_t thread1, thread2;
+	pthread_t thread1, thread2, thread3;
 	pthread_create(&thread1, NULL, &thrash, NULL);
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
-	//thrash();
-	//memoryMaxer();
 }
 
 
