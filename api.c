@@ -47,10 +47,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(250000);
+		usleep(2500);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500000);
+		usleep(2500);
 	}
 }
 
@@ -85,13 +85,10 @@ void unallocate_memory(page *page_to_clear){
 void allocate_memory(int level, int physical_address){
 	if(level == RAM_LEVEL){
 		RAM[physical_address] = 1;
-		//sem_post(&RAM_lock[physical_address]);
 	}else if(level == SSD_LEVEL){
 		SSD[physical_address] = 1;
-		//sem_post(&SSD_lock[physical_address]);
 	}else{
 		HDD[physical_address] = 1;
-		//sem_post(&HDD_lock[physical_address]);
 	}
 }
 
@@ -114,12 +111,13 @@ vAddr random_evict(int level){
 		pthread_exit();
 	}else{
 		int random = rand() % matches;
-		sem_wait(&(options[random]->page_lock));
+		while( sem_trywait(&(options[random]->page_lock)) != 0){
+			random = rand() % matches;
+		}
 
-		//We found a valid page to evict in the level that we want to make space in
+		//e found a valid page to evict in the level that we want to make space in
 		printf("Evicting page %d to level %d to make room at level %d\n", random, options[random]->level + 1, options[random]->level);
 		move_page(options[random], options[random]->level + 1);
-		//printf("Released the lock of page %d\n", match);
 		sem_post(&options[random]->page_lock);
 	}
 }
@@ -135,7 +133,10 @@ vAddr LRU(int level){
 		if( page_table[counter].level != level || !page_table[counter].allocated || page_table[counter].locked){
 			continue;
 		}
-		sem_wait(&page_table[counter].page_lock);
+		if(sem_trywait(&page_table[counter].page_lock) != 0){
+			//The page we were attempting to evict is locked
+			continue;
+		}
 		//Compare the eviction candidate's last used entry with the current OS time, find the page that was used least recently
 		double compare_time = (page_table[counter].last_used.tv_usec/1000000.0) + page_table[counter].last_used.tv_sec;
 		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
@@ -168,6 +169,7 @@ vAddr find_open_page(){
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if( page_table[counter].allocated == 0){
 			if( sem_trywait(&page_table[counter].page_lock) == 0){
+				//printf("Took lock on page %d\n", counter);
 				return counter;
 			} else{
 				printf("Tried to take page %d but it was locked\n", counter);
@@ -176,6 +178,7 @@ vAddr find_open_page(){
 		}
 	}
 	printf("Page table is full!\n");
+	exit(1);
 }
 
 
@@ -203,6 +206,7 @@ int find_open_memory(int level){
 
 	for(counter = 0; counter < size; counter++){
 		if(*(memory + counter) == 0){
+			//printf("Took lock address %d on page %d\n", counter, level);
 			if( sem_trywait(&memory_lock[counter]) == 0){
 				sem_post(&open_spot_lock[level]);
 				return counter;
@@ -316,7 +320,7 @@ void print_page_table(){
 	printf(KRED"------------START--------------\n" RESET);
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if(page_table[counter].allocated){
-			printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
+				printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
 		}
 	}
 	printf(KRED"------------END--------------\n" RESET);
@@ -385,5 +389,4 @@ int main(int argc, char * argv[]){
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
-	thrash();
 }
