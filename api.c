@@ -9,6 +9,10 @@ void print_page_table();
 vAddr second_chance(int level);
 vAddr add_page(int level, int physical_address);
 vAddr LRU(int level);
+
+int find_open_memory(int level);
+void move_page(page *page_to_move,int level);
+void allocate_memory(int level, int physical_address);
 void init();
 
 void init(){
@@ -84,33 +88,6 @@ delay(int level){
 	}
 }
 
-
-//Returns -1 if the level is full, 
-//otherwise returns the address of the first open position
-vAddr find_open_memory(int level){
-	int counter = 0;
-	int size;
-	int *memory;
-	if(level == 0){
-		size = SIZE_RAM;
-		memory = &RAM[0];
-	} else if(level == 1){
-		size = SIZE_SSD;
-		memory = &SSD[0];
-	} else{
-		size = SIZE_HDD;
-		memory = &HDD[0];
-	}
-
-	for(counter = 0; counter < size; counter++){
-		if(*(memory + counter) == 0){
-			return counter;
-		}
-	}
-
-	return -1;
-}
-
 //Print the contents of th queue
 void print_queue(){
 	page_node *current = (page_node *)malloc(sizeof(page_node));
@@ -138,7 +115,7 @@ vAddr evict_page(int level){
 	}
 }
 
-void clear_memory_position(page *page_to_clear){
+void unallocate_memory(page *page_to_clear){
 	switch( page_to_clear->level ){
 		case(RAM_LEVEL):
 			RAM[page_to_clear->address] = 0;
@@ -151,6 +128,16 @@ void clear_memory_position(page *page_to_clear){
 			break;
 	}
 	page_to_clear -> allocated = 0;
+}
+
+void allocate_memory(int level, int physical_address){
+	if(level == RAM_LEVEL){
+		RAM[physical_address] = 1;
+	}else if(level == SSD_LEVEL){
+		SSD[physical_address] = 1;
+	}else{
+		HDD[physical_address] = 1;
+	}
 }
 
 //Evict using the second chance algorithm
@@ -176,9 +163,7 @@ vAddr second_chance(int level){
 	sem_post(&open_spot_lock[top_choice->level + 1]);
 
 	deq();
-	delay(top_choice->level + 1);
 	int addr = add_page(top_choice->level + 1, free_physical_address);
-	clear_memory_position(top_choice);
 }
 
 vAddr LRU(int level){
@@ -201,25 +186,19 @@ vAddr LRU(int level){
 		}
 	}
 
+	//We found no suitable page to evict
 	if(match == -1){
 		printf("Nothing to evict\n");
 		exit(1);
 	}
+
 	//We found a valid page to evict in the level that we want to make space in
-	delay(page_item->level + 1);
 	printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
-
-	//Ensure that there is space at the next level to evict to
-	sem_wait(&open_spot_lock[page_item->level + 1]);
-	vAddr free_physical_address = find_open_memory(page_item->level + 1);
-	sem_post(&open_spot_lock[page_item->level + 1]);
-
-	clear_memory_position(page_item); //Make space at level "level"
-	add_page(page_item->level +1, free_physical_address);
+	move_page(page_item, page_item -> level + 1);
 }
 
 //Finds the next unused page table index
-int find_open_page(){
+vAddr find_open_page(){
 	int counter;
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if( page_table[counter].allocated == 0){
@@ -228,6 +207,33 @@ int find_open_page(){
 	}
 	printf("Page table is full!\n");
 	exit(1);
+}
+
+
+//Returns -1 if the level is full, 
+//otherwise returns the address of the first open position
+int find_open_memory(int level){
+	int counter = 0;
+	int size;
+	int *memory;
+	if(level == 0){
+		size = SIZE_RAM;
+		memory = &RAM[0];
+	} else if(level == 1){
+		size = SIZE_SSD;
+		memory = &SSD[0];
+	} else{
+		size = SIZE_HDD;
+		memory = &HDD[0];
+	}
+
+	for(counter = 0; counter < size; counter++){
+		if(*(memory + counter) == 0){
+			return counter;
+		}
+	}
+
+	return -1;
 }
 
 //Adds a page entry to the table and allocates the open spot
@@ -256,15 +262,8 @@ vAddr add_page(int level, int physical_address){
 	page_table[index].allocated = 1;					//Page is allocated by default
 	page_table[index].level = level;
 	gettimeofday(&page_table[index].last_used, NULL);
+	allocate_memory(level, physical_address);
 	enq(&page_table[index]);
-
-	if(level == RAM_LEVEL){
-		RAM[physical_address] = 1;
-	}else if(level == SSD_LEVEL){
-		SSD[physical_address] = 1;
-	}else{
-		HDD[physical_address] = 1;
-	}
 
 
 	return index;
@@ -278,7 +277,6 @@ vAddr allocateNewInt(){
 	sem_wait(&open_spot_lock[RAM_LEVEL]);
 	int physical_address = find_open_memory(RAM_LEVEL);
 	sem_post(&open_spot_lock[RAM_LEVEL]);
-
 	return add_page(RAM_LEVEL, physical_address);
 }
 
@@ -298,21 +296,7 @@ int * accessIntPtr (vAddr address){
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
-
-		int free_memory = -1;
-		while(free_memory < 0){
-			evict_page(page_item -> level -1);
-
-			sem_wait(&open_spot_lock[page_item->level - 1]);
-			free_memory = find_open_memory(page_item -> level -1);
-			sem_post(&open_spot_lock[page_item->level - 1]);
-		}
-
-		clear_memory_position(page_item);
-		page_item -> address = free_memory;
-		page_item -> level = page_item -> level -1;
-		page_item -> allocated = 1;
-		//printf("vAddr is at level %d and needs to get to level %d. Open memory on level %d is %d\n", page_item->level, page_item->level -1, page_item->level -1, free_memory);
+		move_page(page_item, page_item -> level - 1);
 		return accessIntPtr(address);
 	}
 }
@@ -322,6 +306,39 @@ int * accessIntPtr (vAddr address){
 void unlockMemory(vAddr address){
 	page_table[address].locked = 0;
 }
+
+void move_page(page *page_to_move,int desired_level){
+	//Can't move more than 1 level up or down
+	if( abs(page_to_move->level - desired_level) != 1){
+		printf(KRED "Can't move more than 1 level up or down\n" RESET);
+		exit(1);
+	}
+
+	//Is there space available in the level we are looking for?
+	sem_wait(&open_spot_lock[desired_level]);
+	int physical_address = find_open_memory(desired_level);
+	sem_post(&open_spot_lock[desired_level]);
+
+	printf(KRED "Moving page from level %d to level %d\n" RESET, page_to_move -> level, desired_level);
+
+	while(physical_address == -1){
+		evict_page(desired_level);
+		sem_wait(&open_spot_lock[desired_level]);
+		physical_address = find_open_memory(desired_level);
+		sem_post(&open_spot_lock[desired_level]);
+	}
+
+	unallocate_memory(page_to_move);
+	delay(desired_level);
+	page_to_move->level = desired_level;
+	page_to_move -> address = physical_address;
+	page_to_move -> referenced = 1;
+	page_to_move -> allocated = 1;
+	allocate_memory(desired_level, physical_address);
+	gettimeofday(&page_to_move->last_used, NULL);
+}
+
+
 
 // User can free memory when user is done with the memory page
 // Frees page in memory, and deletes any swapped out copies of page
