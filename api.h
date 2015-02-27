@@ -35,16 +35,6 @@ typedef struct page{
 	struct timeval last_used;
 } page;
 
-
-//Queue node
-typedef struct page_node{
-	page *data;
-	struct page_node *next;
-}page_node;
-
-page_node *front;
-page_node *rear;
-
 int aaron; //0 - LRU, 1 - Second Chance
 int memory_count[3];
 int page_count = 0;
@@ -59,6 +49,5 @@ sem_t RAM_lock[SIZE_RAM];
 sem_t SSD_lock[SIZE_SSD];
 sem_t HDD_lock[SIZE_HDD];
 sem_t print_mutex;
-
 
 page page_table[SIZE_PAGE_TABLE];

@@ -41,41 +41,6 @@ void init(){
 	}
 }
 
-//Add an item to the end of the queue
-void enq(page *data){
-	if (rear == NULL){
-		rear = (page_node *)malloc(sizeof(page_node));
-		rear-> next = NULL;
-		rear-> data = data;
-		front = rear;
-	} else{
-		page_node *temp = (page_node *)malloc(sizeof(page_node));
-		temp -> data = data;
-		temp -> next = NULL;
-		rear-> next = temp;
-		rear = temp;
-	}
-}
-
-//Pops the top element from the queue
-void deq(){
-	page_node *temp = (page_node *)malloc(sizeof(page_node));
-	temp = front;
-	if(temp == NULL){
-		printf("Can't dequeue empty queue\n");
-		return;
-	} else{
-		if( temp -> data != NULL){
-			free(front);
-			front = temp -> next;
-		} else{
-			free(front);
-			front = NULL;
-			rear = NULL;
-		}
-	}
-}
-
 //Delay the transfer
 delay(int level){
 	if(level == RAM_LEVEL){
@@ -87,26 +52,6 @@ delay(int level){
 	if(level == HDD_LEVEL){
 		usleep(2500000);
 	}
-}
-
-//Print the contents of th queue
-void print_queue(int level){
-	sem_wait(&print_mutex);
-	printf(KRED"------------START--------------\n" RESET);
-	page_node *current = (page_node *)malloc(sizeof(page_node));
-	current = front;
-	if(front == NULL && rear == NULL){
-		printf("Queue empty\n");
-		return;
-	}
-	while(current != NULL && current -> data != NULL){
-		if(current -> data -> level == level){
-			printf(KCYN "Page at level %d and address %d with referenced %d\n" RESET, current->data->level, current->data->address, current->data->referenced);
-		}
-		current = current -> next;
-	}
-	printf(KRED"------------END--------------\n" RESET);
-	sem_post(&print_mutex);
 }
 
 //Make space for another page in some level
@@ -149,31 +94,31 @@ void allocate_memory(int level, int physical_address){
 
 //Evict using the second chance algorithm
 vAddr second_chance(int level){
-	page_node *current = (page_node *)malloc(sizeof(page_node));
-	current = front;
-	while(current != NULL){
-		if( current->data->level != level || current->data->allocated == FALSE || current->data->locked){
-			//Skip over this item in queue, not a valid page to evict
-			current = current -> next;
-		}else{
-			if(current -> data -> referenced){
-				//Current has a referenced bit
-				current -> data -> referenced = FALSE;
-				deq();
-				current = current -> next;
-				enq(current -> data);
-			} else{
-				//Current is not referenced, evict this page
-				break;
-			}
+	int counter;
+	int match = -1;
+	page *options[SIZE_SSD]; //We'll never have more than 100 eviction candidates
+	int matches = 0;
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++ ){
+		if( page_table[counter].level != level || !page_table[counter].allocated || page_table[counter].locked){
+			continue;
 		}
+		options[matches++] = &page_table[counter];
 	}
-	page *top_choice = current -> data;
-	//Find the next available spot in the next lowest memory location
-	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
-	printf(KRED "Evicting page with address %d\n" RESET, top_choice -> address);
-	move_page(top_choice, top_choice -> level + 1);
-	print_queue(level);
+
+	//We found no suitable page to evict
+	if(matches == 0){
+		printf("Nothing to evict\n");
+		exit(1);
+	}
+
+	int random = rand() % matches;
+	sem_wait(&(options[random]->page_lock));
+
+	//We found a valid page to evict in the level that we want to make space in
+	printf("Evicting page %d to level %d to make room at level %d\n", random, options[random]->level + 1, options[random]->level);
+	move_page(options[random], options[random]->level + 1);
+	//printf("Released the lock of page %d\n", match);
+	sem_post(&options[random]->page_lock);
 }
 
 //Evicts the page that has been accessed least recently
@@ -290,7 +235,6 @@ vAddr add_page(int level, int physical_address){
 	page_table[index].allocated = 1;					//Page is allocated by default
 	page_table[index].level = level;
 	gettimeofday(&page_table[index].last_used, NULL);
-	enq(&page_table[index]);
 	allocate_memory(level, physical_address);
 	sem_post(&page_table[index].page_lock);
 	return index;
@@ -348,7 +292,6 @@ int * accessIntPtr (vAddr address){
 	} else{
 		//Find an open spot in the next lowest level
 		move_page(page_item, page_item -> level - 1);
-		enq(page_item);
 		return accessIntPtr(address);
 	}
 }
@@ -410,7 +353,7 @@ void thrash() {
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
 		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
-		//print_page_table();
+		print_page_table();
 		printf("Accessed page %d\n", indexes[random]);
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[random]);
@@ -439,11 +382,11 @@ int main(int argc, char * argv[]){
 	}
 	init();
 	pthread_t thread1, thread2, thread3;
-	//pthread_create(&thread1, NULL, &thrash, NULL);
-	//pthread_create(&thread2, NULL, &thrash, NULL);
-	//pthread_join(thread1, NULL);
-	//pthread_join(thread2, NULL);
-	thrash();
+	pthread_create(&thread1, NULL, &thrash, NULL);
+	pthread_create(&thread2, NULL, &thrash, NULL);
+	pthread_join(thread1, NULL);
+	pthread_join(thread2, NULL);
+	//thrash();
 }
 
 
