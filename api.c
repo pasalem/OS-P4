@@ -90,21 +90,22 @@ delay(int level){
 }
 
 //Print the contents of th queue
-void print_queue(){
+void print_queue(int level){
 	sem_wait(&print_mutex);
+	printf(KRED"------------START--------------\n" RESET);
 	page_node *current = (page_node *)malloc(sizeof(page_node));
 	current = front;
 	if(front == NULL && rear == NULL){
 		printf("Queue empty\n");
 		return;
 	}
-	while(current -> next != NULL){
-		printf("Page at level %d and address %d with referenced %d\n", current->data->level, current->data->address, current->data->referenced);
+	while(current != NULL && current -> data != NULL){
+		if(current -> data -> level == level){
+			printf(KCYN "Page at level %d and address %d with referenced %d\n" RESET, current->data->level, current->data->address, current->data->referenced);
+		}
 		current = current -> next;
 	}
-	if(current -> next == NULL){
-		printf("Page at level %d and address %d with referenced %d\nEND\n", current->data->level, current->data->address, current->data->referenced);
-	}
+	printf(KRED"------------END--------------\n" RESET);
 	sem_post(&print_mutex);
 }
 
@@ -148,27 +149,31 @@ void allocate_memory(int level, int physical_address){
 
 //Evict using the second chance algorithm
 vAddr second_chance(int level){
-	page_node *current = front;
-
-	while(current->data->referenced || current->data->level != level || current->data->allocated == FALSE){
+	page_node *current = (page_node *)malloc(sizeof(page_node));
+	current = front;
+	while(current != NULL){
 		if( current->data->level != level || current->data->allocated == FALSE || current->data->locked){
+			//Skip over this item in queue, not a valid page to evict
 			current = current -> next;
-			continue;
+		}else{
+			if(current -> data -> referenced){
+				//Current has a referenced bit
+				current -> data -> referenced = FALSE;
+				deq();
+				current = current -> next;
+				enq(current -> data);
+			} else{
+				//Current is not referenced, evict this page
+				break;
+			}
 		}
-		sem_wait(&(current->data->page_lock));
-		current -> data -> referenced = FALSE;
-		deq();
-		enq(current -> data);
-		current = front;
 	}
 	page *top_choice = current -> data;
 	//Find the next available spot in the next lowest memory location
 	printf(KRED "Trying to evict a page from level %d\n" RESET, level);
-
-	vAddr free_physical_address = find_open_memory(top_choice->level + 1);
-
-	deq();
-	int addr = add_page(top_choice->level + 1, free_physical_address);
+	printf(KRED "Evicting page with address %d\n" RESET, top_choice -> address);
+	move_page(top_choice, top_choice -> level + 1);
+	print_queue(level);
 }
 
 //Evicts the page that has been accessed least recently
@@ -281,7 +286,7 @@ vAddr add_page(int level, int physical_address){
 
 	page_table[index].address = physical_address;	//Page refers to this spot in physical memory
 	page_table[index].locked = 0;					//Page is unlocked by default
-	page_table[index].referenced = 0;				//Page is unreferenced by default
+	page_table[index].referenced = 1;
 	page_table[index].allocated = 1;					//Page is allocated by default
 	page_table[index].level = level;
 	gettimeofday(&page_table[index].last_used, NULL);
@@ -312,7 +317,6 @@ void move_page(page *page_to_move,int desired_level){
 	delay(desired_level);
 	page_to_move->level = desired_level;
 	page_to_move -> address = physical_address;
-	page_to_move -> referenced = 1;
 	page_to_move -> allocated = 1;
 	allocate_memory(desired_level, physical_address);
 }
@@ -344,6 +348,7 @@ int * accessIntPtr (vAddr address){
 	} else{
 		//Find an open spot in the next lowest level
 		move_page(page_item, page_item -> level - 1);
+		enq(page_item);
 		return accessIntPtr(address);
 	}
 }
@@ -405,7 +410,7 @@ void thrash() {
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
 		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
-		print_page_table();
+		//print_page_table();
 		printf("Accessed page %d\n", indexes[random]);
 		*value = (index * 3) + 1;
 		unlockMemory(indexes[random]);
@@ -434,10 +439,11 @@ int main(int argc, char * argv[]){
 	}
 	init();
 	pthread_t thread1, thread2, thread3;
-	pthread_create(&thread1, NULL, &thrash, NULL);
-	pthread_create(&thread2, NULL, &thrash, NULL);
-	pthread_join(thread1, NULL);
-	pthread_join(thread2, NULL);
+	//pthread_create(&thread1, NULL, &thrash, NULL);
+	//pthread_create(&thread2, NULL, &thrash, NULL);
+	//pthread_join(thread1, NULL);
+	//pthread_join(thread2, NULL);
+	thrash();
 }
 
 
