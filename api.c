@@ -50,7 +50,7 @@ delay(int level){
 		usleep(250000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500000);
+		usleep(250000);
 	}
 }
 
@@ -177,6 +177,7 @@ vAddr find_open_page(){
 			}
 		}
 	}
+	print_page_table();
 	printf("Page table is full!\n");
 	exit(1);
 }
@@ -294,9 +295,9 @@ int * accessIntPtr (vAddr address){
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
-		sem_wait(&page_table[address].page_lock);
+		sem_wait(&page_item->page_lock);
 		move_page(page_item, page_item -> level - 1);
-		sem_post(&page_table[address].page_lock);
+		sem_post(&page_item->page_lock);
 		return accessIntPtr(address);
 	}
 	return NULL;
@@ -322,7 +323,7 @@ void print_page_table(){
 	int counter = 0;
 	printf(KRED"------------START--------------\n" RESET);
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
-		if(page_table[counter].level == 0){
+		if(page_table[counter].allocated){
 			printf(KBLU" Page w/ vAddr %d on level %d has address %d\n" RESET, counter, page_table[counter].level, page_table[counter].address);
 		}
 	}
@@ -336,13 +337,13 @@ void memoryMaxer() {
 	vAddr indexes[SIZE_PAGE_TABLE];
 	int index = 0;
 	for (index = 0; index < 1000; ++index) {
-		printf("Counter has value %d\n", index);
+		printf("Allocating new int  %d\n", index);
 		indexes[index] = allocateNewInt();				//returns the address of the newly allocated item in RAM
 		int *value = accessIntPtr(indexes[index]);		//returns a pointer to the spot in ram
 		*value = (index * 3) + 1;
+		print_page_table();
 		unlockMemory(indexes[index]);
 	}
-	print_page_table();
 	for (index = 0; index < 1000; ++index) {
 		freeMemory(indexes[index]);
 	}
@@ -358,15 +359,13 @@ void thrash() {
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
 		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
-		print_page_table();
-		printf("Accessed page %d\n", indexes[random]);
 		*value = (index * 3) + 1;
+		print_page_table();
 		unlockMemory(indexes[random]);
 	}
 	for (index = 0; index < 1000; ++index) {
 		freeMemory(indexes[index]);
 	}
-	print_page_table();
 }
 
 void usage(){
