@@ -50,7 +50,7 @@ delay(int level){
 		usleep(250000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(250000);
+		usleep(2500000);
 	}
 }
 
@@ -355,13 +355,47 @@ void thrash() {
 	for (index = 0; index < 1000; ++index) {
 		printf("Allocating new int  %d\n", index);
 		indexes[index] = allocateNewInt();
-
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
 		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
 		*value = (index * 3) + 1;
 		print_page_table();
 		unlockMemory(indexes[random]);
+	}
+	for (index = 0; index < 1000; ++index) {
+		freeMemory(indexes[index]);
+	}
+}
+
+void repeat_test() {
+	vAddr indexes[SIZE_PAGE_TABLE];
+	int index = 0;
+	for (index = 0; index < 1000; ++index) {
+		printf("Allocating new int  %d\n", index);
+		indexes[index] = allocateNewInt();
+		printf("Accessing vAddr %d over and over and over...\n", 50);
+		if(index > 100 && index%5 == 0){
+			accessIntPtr(50);
+		}
+		print_page_table();
+		unlockMemory(indexes[index]);
+	}
+	for (index = 0; index < 1000; ++index) {
+		freeMemory(indexes[index]);
+	}
+}
+
+void lock_out_test() {
+	vAddr indexes[SIZE_PAGE_TABLE];
+	int index = 0;
+	for (index = 0; index < 1000; ++index) {
+		printf("Allocating new int  %d\n", index);
+		indexes[index] = allocateNewInt();
+		int random = rand() % (index + 1) ;
+		printf("Accessing vAddr %d\n", indexes[random]);
+		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
+		*value = (index * 3) + 1;
+		print_page_table();
 	}
 	for (index = 0; index < 1000; ++index) {
 		freeMemory(indexes[index]);
