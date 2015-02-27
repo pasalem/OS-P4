@@ -183,12 +183,19 @@ vAddr LRU(int level){
 		if( page_table[counter].level != level || !page_table[counter].allocated || page_table[counter].locked){
 			continue;
 		}
+		sem_wait(&page_table[counter].page_lock);
+		//printf("Took the lock of page %d\n", counter);
 		//Compare the eviction candidate's last used entry with the current OS time, find the page that was used least recently
 		double compare_time = (page_table[counter].last_used.tv_usec/1000000.0) + page_table[counter].last_used.tv_sec;
 		double best_time = (page_item->last_used.tv_usec/1000000.0) + page_item->last_used.tv_sec;
 		if( compare_time < best_time ) {
+			//printf("Released the lock of page %d\n", counter);
+			sem_post(&page_item->page_lock);
 			page_item = &page_table[counter];
 			match = counter;
+		} else{
+			//printf("Released the lock of page %d\n", counter);
+			sem_post(&page_table[counter].page_lock);
 		}
 	}
 
@@ -201,6 +208,8 @@ vAddr LRU(int level){
 	//We found a valid page to evict in the level that we want to make space in
 	printf("Evicting page to level %d to make room at level %d\n", page_item->level + 1, page_item->level);
 	move_page(page_item, page_item -> level + 1);
+	//printf("Released the lock of page %d\n", match);
+	sem_post(&page_table[match].page_lock);
 }
 
 //Finds the next unused page table index
@@ -208,7 +217,12 @@ vAddr find_open_page(){
 	int counter;
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if( page_table[counter].allocated == 0){
-			return counter;
+			if( sem_trywait(&page_table[counter].page_lock) == 0){
+				return counter;
+			} else{
+				printf("Tried to take page %d but it was locked\n", counter);
+				continue;
+			}
 		}
 	}
 	printf("Page table is full!\n");
@@ -268,6 +282,7 @@ vAddr add_page(int level, int physical_address){
 
 	sem_wait(&table_spot_lock);
 	int index = find_open_page();
+	printf("Found open page %d\n", index);
 	sem_post(&table_spot_lock);
 
 	page_table[index].address = physical_address;	//Page refers to this spot in physical memory
@@ -278,6 +293,7 @@ vAddr add_page(int level, int physical_address){
 	gettimeofday(&page_table[index].last_used, NULL);
 	enq(&page_table[index]);
 	allocate_memory(level, physical_address);
+	sem_post(&page_table[index].page_lock);
 	return index;
 }
 
@@ -334,7 +350,6 @@ int * accessIntPtr (vAddr address){
 	page_item->locked = TRUE;
 	//If the page is in RAM already, just return a pointer to it
 	if(page_item->level == RAM_LEVEL){
-		printf("Found vAddr %d in RAM\n", address);
 		return &RAM[page_item->address];
 	} else{
 		//Find an open spot in the next lowest level
@@ -364,10 +379,10 @@ void print_page_table(){
 	sem_wait(&print_mutex);
 	int counter = 0;
 	printf(KRED"------------START--------------\n" RESET);
-	for(counter = 0; counter < 50; counter++){
-		//if(page_table[counter].allocated){
+	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
+		if(page_table[counter].allocated){
 			printf(KBLU" Page w/ vAddr %d on level %d has address %d and allocated %d and locked %d\n" RESET, counter, page_table[counter].level, page_table[counter].address, page_table[counter].allocated, page_table[counter].locked);
-		//}
+		}
 	}
 	printf(KRED"------------END--------------\n" RESET);
 	sem_post(&print_mutex);
@@ -400,10 +415,10 @@ void thrash() {
 
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
-		//int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
+		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
 		print_page_table();
 		printf("Accessed page %d\n", indexes[random]);
-		//*value = (index * 3) + 1;
+		*value = (index * 3) + 1;
 		unlockMemory(indexes[random]);
 	}
 	for (index = 0; index < 1000; ++index) {
