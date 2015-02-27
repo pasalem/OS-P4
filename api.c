@@ -18,6 +18,7 @@ void init();
 void init(){
 	int counter;
 	sem_init(&table_spot_lock,0,1);
+	sem_init(&print_mutex,0,1);
 
 	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
 		if(counter < 3){
@@ -90,6 +91,7 @@ delay(int level){
 
 //Print the contents of th queue
 void print_queue(){
+	sem_wait(&print_mutex);
 	page_node *current = (page_node *)malloc(sizeof(page_node));
 	current = front;
 	if(front == NULL && rear == NULL){
@@ -103,6 +105,7 @@ void print_queue(){
 	if(current -> next == NULL){
 		printf("Page at level %d and address %d with referenced %d\nEND\n", current->data->level, current->data->address, current->data->referenced);
 	}
+	sem_post(&print_mutex);
 }
 
 //Make space for another page in some level
@@ -255,7 +258,7 @@ vAddr add_page(int level, int physical_address){
 		exit(1);
 	}
 
-	if(physical_address == -1){
+	while(physical_address == -1){
 		evict_page(level);
 
 		sem_wait(&open_spot_lock[level]);
@@ -273,9 +276,8 @@ vAddr add_page(int level, int physical_address){
 	page_table[index].allocated = 1;					//Page is allocated by default
 	page_table[index].level = level;
 	gettimeofday(&page_table[index].last_used, NULL);
-	allocate_memory(level, physical_address);
 	enq(&page_table[index]);
-
+	allocate_memory(level, physical_address);
 	return index;
 }
 
@@ -359,12 +361,16 @@ void freeMemory(vAddr address){
 }
 
 void print_page_table(){
+	sem_wait(&print_mutex);
 	int counter = 0;
-	for(counter = 0; counter < SIZE_PAGE_TABLE; counter++){
-		if(page_table[counter].allocated){
+	printf(KRED"------------START--------------\n" RESET);
+	for(counter = 0; counter < 50; counter++){
+		//if(page_table[counter].allocated){
 			printf(KBLU" Page w/ vAddr %d on level %d has address %d and allocated %d and locked %d\n" RESET, counter, page_table[counter].level, page_table[counter].address, page_table[counter].allocated, page_table[counter].locked);
-		}
+		//}
 	}
+	printf(KRED"------------END--------------\n" RESET);
+	sem_post(&print_mutex);
 }
 
 //Allocate, access, update, unlock, and free memory
@@ -394,10 +400,10 @@ void thrash() {
 
 		int random = rand() % (index + 1) ;
 		printf("Accessing vAddr %d\n", indexes[random]);
-		int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
+		//int *value = accessIntPtr(indexes[random]);		//returns a pointer to the spot in ram
 		print_page_table();
 		printf("Accessed page %d\n", indexes[random]);
-		*value = (index * 3) + 1;
+		//*value = (index * 3) + 1;
 		unlockMemory(indexes[random]);
 	}
 	for (index = 0; index < 1000; ++index) {
@@ -424,14 +430,13 @@ int main(int argc, char * argv[]){
 	}
 
 	init();
-	/*
+	
 	pthread_t thread1, thread2;
 	pthread_create(&thread1, NULL, &thrash, NULL);
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
-	*/
-	thrash();
+	//thrash();
 	//memoryMaxer();
 }
 

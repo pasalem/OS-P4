@@ -58,6 +58,7 @@ sem_t table_spot_lock;
 sem_t RAM_lock[SIZE_RAM];
 sem_t SSD_lock[SIZE_SSD];
 sem_t HDD_lock[SIZE_HDD];
+sem_t print_mutex;
 
 
 page page_table[SIZE_PAGE_TABLE];
