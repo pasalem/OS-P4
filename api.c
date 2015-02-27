@@ -47,10 +47,10 @@ delay(int level){
 		return;
 	}
 	if(level == SSD_LEVEL){
-		usleep(250);
+		usleep(250000);
 	}
 	if(level == HDD_LEVEL){
-		usleep(2500);
+		usleep(2500000);
 	}
 }
 
