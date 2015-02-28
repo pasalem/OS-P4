@@ -349,6 +349,24 @@ void memoryMaxer() {
 	}
 }
 
+//This should take (25 * 0) + (75 * 0.25) + (5 * 2.75) seconds.. 
+//...or 38.75 seconds. Our tests showed 38.75 seconds!
+void timing_test() {
+	struct timeval time_start, time_finish;
+	gettimeofday(&time_start, NULL);
+	vAddr indexes[SIZE_PAGE_TABLE];
+	int index = 0;
+	for (index = 0; index < 130; ++index) {
+		indexes[index] = allocateNewInt();
+		unlockMemory(indexes[index]);
+	}
+	gettimeofday(&time_finish, NULL);
+	double runTime = (time_finish.tv_sec + (double)(time_finish.tv_usec/1000000.0)) - (time_start.tv_sec + (double)(time_start.tv_usec/1000000.0) );
+	printf("Timing test allocated 130 variables in %f seconds\n", runTime);
+
+
+}
+
 void thrash() {
 	vAddr indexes[SIZE_PAGE_TABLE];
 	int index = 0;
@@ -425,4 +443,6 @@ int main(int argc, char * argv[]){
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
+	thrash();
+	//timing_test();
 }
