@@ -363,8 +363,6 @@ void timing_test() {
 	gettimeofday(&time_finish, NULL);
 	double runTime = (time_finish.tv_sec + (double)(time_finish.tv_usec/1000000.0)) - (time_start.tv_sec + (double)(time_start.tv_usec/1000000.0) );
 	printf("Timing test allocated 130 variables in %f seconds\n", runTime);
-
-
 }
 
 void thrash() {
@@ -443,6 +441,6 @@ int main(int argc, char * argv[]){
 	pthread_create(&thread2, NULL, &thrash, NULL);
 	pthread_join(thread1, NULL);
 	pthread_join(thread2, NULL);
-	thrash();
+	//thrash();
 	//timing_test();
 }
